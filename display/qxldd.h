@@ -1,0 +1,301 @@
+/*
+   Copyright (C) 2009 Red Hat, Inc.
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of
+   the License, or (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#ifndef _H_QXLDD
+#define _H_QXLDD
+
+
+#include "stddef.h"
+
+#include <stdarg.h>
+#include <stdlib.h>
+#include "windef.h"
+#include "wingdi.h"
+#include "winddi.h"
+#include "qxl_driver.h"
+#include "mspace.h"
+#if (WINVER < 0x0501)
+#include "wdmhelper.h"
+#endif
+
+#define ALLOC_TAG 'dlxq'
+
+#define PAGE_SHIFT 12
+#define PAGE_SIZE (1 << PAGE_SHIFT)
+#define PAGE_MASK (~(PAGE_SIZE - 1))
+
+#define DEBUG_PRINT(arg) DebugPrint arg
+
+#ifdef DBG
+#define ASSERT(pdev, x) if (!(x)) { \
+    DebugPrint(pdev, 0, "ASSERT(%s) failed @ %s\n", #x, __FUNCTION__); \
+    EngDebugBreak();\
+}
+#define ONDBG(x) x
+#else
+#define ASSERT(pdev, x)
+#define ONDBG(x)
+#endif
+
+typedef enum {
+    QXL_SUCCESS,
+    QXL_FAILED,
+    QXL_UNSUPPORTED,
+} QXLRESULT;
+
+typedef struct Ring RingItem;
+typedef struct Ring {
+    RingItem *prev;
+    RingItem *next;
+} Ring;
+
+#define IMAGE_HASH_SHIFT 15
+#define IMAGE_HASH_SIZE (1 << IMAGE_HASH_SHIFT)
+#define IMAGE_HASH_MASK (IMAGE_HASH_SIZE - 1)
+
+#define IMAGE_POOL_SIZE (1 << 15)
+
+#define CURSOR_CACHE_SIZE (1 << 6)
+#define CURSOR_HASH_SIZE (CURSOR_CACHE_SIZE << 1)
+#define CURSOR_HASH_NASKE (CURSOR_HASH_SIZE - 1)
+
+#define PALETTE_CACHE_SIZE (1 << 6)
+#define PALETTE_HASH_SIZE (PALETTE_CACHE_SIZE << 1)
+#define PALETTE_HASH_NASKE (PALETTE_HASH_SIZE - 1)
+
+//#define CALL_TEST
+
+#ifdef CALL_TEST
+enum {
+    CALL_COUNTER_COPY_BITS,
+    CALL_COUNTER_BIT_BLT,
+    CALL_COUNTER_TEXT_OUT,
+    CALL_COUNTER_STROKE_PATH,
+    CALL_COUNTER_STRETCH_BLT,
+    CALL_COUNTER_STRETCH_BLT_ROP,
+    CALL_COUNTER_TRANSPARENT_BLT,
+    CALL_COUNTER_ALPHA_BLEND,
+
+    CALL_COUNTER_FILL_PATH,
+    CALL_COUNTER_GRADIENT_FILL,
+    CALL_COUNTER_LINE_TO,
+    CALL_COUNTER_PLG_BLT,
+    CALL_COUNTER_STROKE_AND_FILL_PATH,
+
+    NUM_CALL_COUNTERS,
+};
+#endif
+
+typedef struct QuicData QuicData;
+
+#define IMAGE_KEY_HASH_SIZE (1 << 15)
+#define IMAGE_KEY_HASH_MASK (IMAGE_KEY_HASH_SIZE - 1)
+
+typedef struct ImageKey {
+    HSURF hsurf;
+    UINT64 unique;
+    UINT32 key;
+} ImageKey;
+
+typedef struct CacheImage {
+    struct CacheImage *next;
+    RingItem lru_link;
+    UINT32 key;
+    UINT32 hits;
+    UINT8 format;
+    UINT32 width;
+    UINT32 height;
+    struct InternalImage *image;
+} CacheImage;
+
+#define NUM_UPDATE_TRACE_ITEMS 10
+typedef struct UpdateTrace {
+    RingItem link;
+    UINT32 last_time;
+    RECTL area;
+    HSURF hsurf;
+} UpdateTrace;
+
+typedef struct PDev {
+    HANDLE driver;
+    HDEV eng;
+    HPALETTE palette;
+    HSURF surf;
+    DWORD video_mode_index;
+    SIZEL resolution;
+    UINT32 max_bitmap_size;
+    ULONG bitmap_format;
+    ULONG fb_size;
+    BYTE* fb;
+    ULONG stride;
+    FLONG red_mask;
+    FLONG green_mask;
+    FLONG blue_mask;
+    ULONG fp_state_size;
+
+    QuicData *quic_data;
+
+    QXLCommandRing *cmd_ring;
+    QXLCursorRing *cursor_ring;
+    QXLReleaseRing *release_ring;
+    UINT32 notify_cmd_port;
+    UINT32 notify_cursor_port;
+    UINT32 notify_oom_port;
+    PEVENT display_event;
+    PEVENT cursor_event;
+    PEVENT sleep_event;
+
+    HSURF draw_bitmap;
+    SURFOBJ *draw_surf;
+
+    UINT32 log_port;
+    UINT8 *log_buf;
+    UINT32 *log_level;
+
+    HSEMAPHORE malloc_sem;
+    HSEMAPHORE print_sem;
+
+    UINT32 num_io_pages;
+    UINT8 *io_pages_virt;
+    UINT64 io_pages_phys;
+
+    mspace mspace;
+    UINT8 *mspace_start;
+    UINT8 *mspace_end;
+
+    UINT64 free_outputs;
+
+    UINT32 update_id;
+    UINT32 *dev_update_id;
+
+    UINT32 update_area_port;
+    Rect *update_area;
+
+    UINT32 *mm_clock;
+
+    UINT32 *compression_level;
+
+    ImageKey image_key_lookup[IMAGE_KEY_HASH_SIZE];
+    CacheImage cache_image_pool[IMAGE_POOL_SIZE];
+    Ring cache_image_lru;
+    struct CacheImage *image_cache[IMAGE_HASH_SIZE];
+
+    struct InternalCursor *cursor_cache[CURSOR_HASH_SIZE];
+    Ring cursors_lru;
+    UINT32 num_cursors;
+    UINT32 last_cursor_id;
+    FLONG cursor_trail;
+
+    struct InternalPalette *palette_cache[PALETTE_HASH_SIZE];
+    Ring palette_lru;
+    UINT32 num_palettes;
+
+    Ring update_trace;
+    UpdateTrace update_trace_items[NUM_UPDATE_TRACE_ITEMS];
+
+#ifdef DBG
+    int num_free_pages;
+    int num_outputs;
+    int num_path_pages;
+    int num_rects_pages;
+    int num_bits_pages;
+    int num_buf_pages;
+    int num_glyphs_pages;
+    int num_cursor_pages;
+#endif
+
+#ifdef CALL_TEST
+    BOOL count_calls;
+    UINT32 total_calls;
+    UINT32 call_counters[NUM_CALL_COUNTERS];
+#endif
+
+#if (WINVER < 0x0501)
+    PQXLWaitForEvent WaitForEvent;
+#endif
+} PDev;
+
+
+void DebugPrintV(PDev *pdev, const char *message, va_list ap);
+void DebugPrint(PDev *pdev, int level, const char *message, ...);
+
+void InitResources(PDev *pdev);
+
+#ifdef CALL_TEST
+void CountCall(PDev *pdev, int counter);
+#else
+#define CountCall(a, b)
+#endif
+
+char *BitmapFormatToStr(int format);
+char *BitmapTypeToStr(int type);
+
+static _inline void RingInit(Ring *ring)
+{
+    ring->next = ring->prev = ring;
+}
+
+static _inline void RingItemInit(RingItem *item)
+{
+    item->next = item->prev = NULL;
+}
+
+static _inline BOOL RingItemIsLinked(RingItem *item)
+{
+    return !!item->next;
+}
+
+static _inline BOOL RingIsEmpty(PDev *pdev, Ring *ring)
+{
+    ASSERT(pdev, ring->next != NULL && ring->prev != NULL);
+    return ring == ring->next;
+}
+
+static _inline void RingAdd(PDev *pdev, Ring *ring, RingItem *item)
+{
+    ASSERT(pdev, ring->next != NULL && ring->prev != NULL);
+    ASSERT(pdev, item->next == NULL && item->prev == NULL);
+
+    item->next = ring->next;
+    item->prev = ring;
+    ring->next = item->next->prev = item;
+}
+
+static _inline void RingRemove(PDev *pdev, RingItem *item)
+{
+    ASSERT(pdev, item->next != NULL && item->prev != NULL);
+    ASSERT(pdev, item->next != item);
+
+    item->next->prev = item->prev;
+    item->prev->next = item->next;
+    item->prev = item->next = 0;
+}
+
+static _inline RingItem *RingGetTail(PDev *pdev, Ring *ring)
+{
+    RingItem *ret;
+
+    ASSERT(pdev, ring->next != NULL && ring->prev != NULL);
+
+    if (RingIsEmpty(pdev, ring)) {
+        return NULL;
+    }
+    ret = ring->prev;
+    return ret;
+}
+
+#endif
