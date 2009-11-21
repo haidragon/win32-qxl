@@ -80,6 +80,8 @@ typedef struct QXLExtension {
     PEVENT cursor_event;
     PEVENT sleep_event;
 
+    MemSlot *mem_slots;
+
 } QXLExtension;
 
 #define QXL_ALLOC_TAG '_lxq'
@@ -413,6 +415,35 @@ VP_STATUS InitModes(QXLExtension *dev);
 #pragma alloc_text(PAGE, InitModes)
 #endif
 
+void DestroyMemSlots(QXLExtension *dev)
+{
+    if (dev->mem_slots) {
+        VideoPortFreePool(dev, dev->mem_slots);
+        dev->mem_slots = NULL;
+    }
+}
+
+VP_STATUS InitMemSlots(QXLExtension *dev)
+{
+#if (WINVER < 0x0501) //Win2K
+    error = VideoPortAllocateBuffer(dev, dev->rom->slots_end * sizeof(MemSlot), &dev->mem_slots);
+
+    if(!dev->mem_slots || error != NO_ERROR) {
+        return ERROR_NOT_ENOUGH_MEMORY;
+    }
+#else
+    if (!(dev->mem_slots = VideoPortAllocatePool(dev, VpPagedPool,
+                                                 dev->rom->slots_end * sizeof(MemSlot),
+                                                 QXL_ALLOC_TAG))) {
+        DEBUG_PRINT((0, "%s: alloc mem failed\n", __FUNCTION__));
+        return ERROR_NOT_ENOUGH_MEMORY;
+    }
+#endif
+    VideoPortZeroMemory(dev->mem_slots, dev->rom->slots_end * sizeof(MemSlot));
+
+    return NO_ERROR;
+}
+
 VP_STATUS InitModes(QXLExtension *dev)
 {
     QXLRom *rom;
@@ -493,6 +524,10 @@ void DevExternsionCleanup(QXLExtension *dev)
         VideoPortFreePool(dev, dev->modes);
     }
 
+    if (dev->mem_slots) {
+        DestroyMemSlots(dev);
+    }
+
     VideoPortZeroMemory(dev, sizeof(QXLExtension));
 }
 
@@ -568,7 +603,8 @@ VP_STATUS FindAdapter(PVOID dev_extension,
         (status = InitRom(dev_ext, &ranges[QXL_ROM_RANGE_INDEX])) != NO_ERROR ||
         (status = InitRam(dev_ext, &ranges[QXL_RAM_RANGE_INDEX])) != NO_ERROR ||
         (status = InitVRAM(dev_ext, &ranges[QXL_VRAM_RANGE_INDEX])) != NO_ERROR ||
-        (status = InitModes(dev_ext)) != NO_ERROR ) {
+        (status = InitModes(dev_ext)) != NO_ERROR ||
+        (status = InitMemSlots(dev_ext)) != NO_ERROR) {
         DEBUG_PRINT((0,  "%s: findAdapter failed\n", __FUNCTION__));
         DevExternsionCleanup(dev_ext);
     }
@@ -582,6 +618,35 @@ VP_STATUS FindAdapter(PVOID dev_extension,
     return status;
 }
 
+static BOOLEAN CreateMemSlots(QXLExtension *dev_ext)
+{
+    QXLMemSlot *slot;
+    UINT8 slot_id = dev_ext->rom->slots_start;
+
+    if (slot_id >= dev_ext->rom->slots_end) {
+        DEBUG_PRINT((0, "%s: start_memslot bigger than nmem_slot\n", __FUNCTION__));
+        return FALSE;
+    }
+
+    dev_ext->mem_slots[slot_id].start_phys_addr = dev_ext->ram_physical.QuadPart +
+                                                  dev_ext->rom->pages_offset;
+    dev_ext->mem_slots[slot_id].end_phys_addr = dev_ext->mem_slots[slot_id].start_phys_addr +
+                                                dev_ext->rom->num_io_pages * PAGE_SIZE;
+
+    dev_ext->mem_slots[slot_id].start_virt_addr = (UINT64)dev_ext->ram_start +
+                                                  dev_ext->rom->pages_offset;
+    dev_ext->mem_slots[slot_id].end_virt_addr = dev_ext->mem_slots[slot_id].start_virt_addr +
+                                                dev_ext->rom->num_io_pages * PAGE_SIZE;
+
+    dev_ext->ram_header->mem_slot.mem_start = dev_ext->mem_slots[slot_id].start_phys_addr;
+    dev_ext->ram_header->mem_slot.mem_end = dev_ext->mem_slots[slot_id].end_phys_addr;
+
+    VideoPortWritePortUchar((PUCHAR)dev_ext->io_port + QXL_IO_MEMSLOT_ADD, slot_id);
+
+    dev_ext->mem_slots[slot_id].generation = dev_ext->rom->slot_generation;
+
+    return TRUE;
+}
 
 #if defined(ALLOC_PRAGMA)
 void HWReset(QXLExtension *dev_ext);
@@ -593,6 +658,7 @@ void HWReset(QXLExtension *dev_ext)
     PAGED_CODE();
     DEBUG_PRINT((0, "%s\n", __FUNCTION__));
     VideoPortWritePortUchar((PUCHAR)dev_ext->io_base + QXL_IO_RESET, 0);
+    CreateMemSlots(dev_ext);
     DEBUG_PRINT((0, "%s: done\n", __FUNCTION__));
 }
 
@@ -896,6 +962,13 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             driver_info->io_pages_virt = dev_ext->ram_start + dev_ext->rom->pages_offset;
             driver_info->io_pages_phys = dev_ext->ram_physical.QuadPart +
                                                                 dev_ext->rom->pages_offset;
+
+            driver_info->main_mem_slot_id = dev_ext->rom->slots_start;
+            driver_info->num_mem_slot = dev_ext->rom->slots_end;
+            driver_info->slot_gen_bits = dev_ext->rom->slot_gen_bits;
+            driver_info->slot_id_bits = dev_ext->rom->slot_id_bits;
+            driver_info->main_mem_slot = dev_ext->mem_slots[driver_info->main_mem_slot_id];
+
 #if (WINVER < 0x0501)
             driver_info->WaitForEvent = QXLWaitForEvent;
 #endif

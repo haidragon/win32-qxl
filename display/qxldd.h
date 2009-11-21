@@ -130,6 +130,11 @@ typedef struct UpdateTrace {
     HSURF hsurf;
 } UpdateTrace;
 
+typedef struct PMemSlot {
+    MemSlot slot;
+    ADDRESS high_bits;
+} PMemSlot;
+
 typedef struct PDev {
     HANDLE driver;
     HDEV eng;
@@ -168,6 +173,13 @@ typedef struct PDev {
 
     HSEMAPHORE malloc_sem;
     HSEMAPHORE print_sem;
+
+    PMemSlot *mem_slots;
+    UINT8 num_mem_slot;
+    UINT8 main_mem_slot;
+    UINT8 slot_id_bits;
+    UINT8 slot_gen_bits;
+    ADDRESS va_slot_mask;
 
     UINT32 num_io_pages;
     UINT8 *io_pages_virt;

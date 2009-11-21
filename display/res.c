@@ -29,11 +29,27 @@
 #define WAIT_FOR_EVENT(pdev, event, timeout) EngWaitForSingleObject(event, timeout)
 #endif
 
-#define PA(pdev, vaddr)\
-    ((pdev)->io_pages_phys + ((UINT8*)(vaddr) - (pdev)->io_pages_virt))
+static _inline PHYSICAL PA(PDev *pdev, PVOID virt, UINT8 slot_id)
+{
+    PMemSlot *p_slot = &pdev->mem_slots[slot_id];
 
-#define VA(pdev, paddr)\
-    ((pdev)->io_pages_virt + ((paddr) - (pdev)->io_pages_phys))
+    return p_slot->high_bits | ((UINT64)virt - p_slot->slot.start_virt_addr);
+}
+
+static _inline UINT64 VA(PDev *pdev, PHYSICAL paddr, UINT8 slot_id)
+{
+    UINT64 virt;
+    PMemSlot *p_slot = &pdev->mem_slots[slot_id];
+
+    ASSERT(pdev, (paddr >> (64 - pdev->slot_id_bits)) == slot_id);
+    ASSERT(pdev, ((paddr << pdev->slot_id_bits) >> (64 - pdev->slot_gen_bits)) ==
+           p_slot->slot.generation);
+
+    virt = paddr & pdev->va_slot_mask;
+    virt += p_slot->slot.start_virt_addr;;
+
+    return virt;
+}
 
 #define RELEASE_RES(pdev, res) if (!--(res)->refs) (res)->free(pdev, res);
 #define GET_RES(res) (++(res)->refs)
@@ -374,7 +390,7 @@ void PushDrawable(PDev *pdev, QXLDrawable *drawable)
     WaitForCmdRing(pdev);
     cmd = RING_PROD_ITEM(pdev->cmd_ring);
     cmd->type = QXL_CMD_DRAW;
-    cmd->data = PA(pdev, drawable);
+    cmd->data = PA(pdev, drawable, pdev->main_mem_slot);
     PUSH_CMD(pdev);
 }
 
@@ -386,7 +402,7 @@ static void FreePath(PDev *pdev, Resource *res)
 
     chunk_phys = ((QXLPath *)res->res)->chunk.next_chunk;
     while (chunk_phys) {
-        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys);
+        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, chunk);
         ONDBG(pdev->num_path_pages--);
@@ -397,16 +413,16 @@ static void FreePath(PDev *pdev, Resource *res)
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
 
-#define NEW_DATA_CHUNK(page_counter, size) {                    \
-    void *ptr = AllocMem(pdev, size + sizeof(QXLDataChunk));    \
-    ONDBG((*(page_counter))++);                                 \
-    chunk->next_chunk = PA(pdev, ptr);                          \
-    ((QXLDataChunk *)ptr)->prev_chunk = PA(pdev, chunk);        \
-    chunk = (QXLDataChunk *)ptr;                                \
-    chunk->data_size = 0;                                       \
-    chunk->next_chunk = 0;                                      \
-    now = chunk->data;                                          \
-    end = now + size;                                           \
+#define NEW_DATA_CHUNK(page_counter, size) {                                    \
+    void *ptr = AllocMem(pdev, size + sizeof(QXLDataChunk));                    \
+    ONDBG((*(page_counter))++);                                                 \
+    chunk->next_chunk = PA(pdev, ptr, pdev->main_mem_slot);                     \
+    ((QXLDataChunk *)ptr)->prev_chunk = PA(pdev, chunk, pdev->main_mem_slot);   \
+    chunk = (QXLDataChunk *)ptr;                                                \
+    chunk->data_size = 0;                                                       \
+    chunk->next_chunk = 0;                                                      \
+    now = chunk->data;                                                          \
+    end = now + size;                                                           \
 }
 
 #ifdef DBG
@@ -523,7 +539,7 @@ BOOL QXLGetPath(PDev *pdev, QXLDrawable *drawable, PHYSICAL *path_phys, PATHOBJ 
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
 
     path_res = __GetPath(pdev, path);
-    *path_phys = PA(pdev, path_res->res);
+    *path_phys = PA(pdev, path_res->res, pdev->main_mem_slot);
     DrawableAddRes(pdev, drawable, path_res);
     RELEASE_RES(pdev, path_res);
     return TRUE;
@@ -538,7 +554,7 @@ static void FreeClipRects(PDev *pdev, Resource *res)
 
     chunk_phys = ((QXLClipRects *)res->res)->chunk.next_chunk;
     while (chunk_phys) {
-        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys);
+        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, chunk);
         ONDBG(pdev->num_rects_pages--);
@@ -596,8 +612,8 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
             if (dest == dest_end) {
                 void *page = AllocMem(pdev, RECTS_CHUNK_ALLOC_SIZE);
                 ONDBG(pdev->num_rects_pages++);
-                chunk->next_chunk = PA(pdev, page);
-                ((QXLDataChunk *)page)->prev_chunk = PA(pdev, chunk);
+                chunk->next_chunk = PA(pdev, page, pdev->main_mem_slot);
+                ((QXLDataChunk *)page)->prev_chunk = PA(pdev, chunk, pdev->main_mem_slot);
                 chunk = (QXLDataChunk *)page;
                 chunk->data_size = 0;
                 chunk->next_chunk = 0;
@@ -652,7 +668,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
             DrawableAddRes(pdev, drawable, path_res);
             RELEASE_RES(pdev, path_res);
             drawable->clip.type = CLIP_TYPE_PATH;
-            drawable->clip.data = PA(pdev, path_res->res);
+            drawable->clip.data = PA(pdev, path_res->res, pdev->main_mem_slot);
             DEBUG_PRINT((pdev, 10, "%s: done\n", __FUNCTION__));
             return TRUE;
         } else {
@@ -664,7 +680,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
     DrawableAddRes(pdev, drawable, rects_res);
     RELEASE_RES(pdev, rects_res);
     drawable->clip.type = CLIP_TYPE_RECTS;
-    drawable->clip.data = PA(pdev, rects_res->res);
+    drawable->clip.data = PA(pdev, rects_res->res, pdev->main_mem_slot);
     DEBUG_PRINT((pdev, 10, "%s: done\n", __FUNCTION__));
     return TRUE;
 }
@@ -937,7 +953,7 @@ static _inline void GetPallette(PDev *pdev, Bitmap *bitmap, XLATEOBJ *color_tran
 
     if ((internal = PaletteCacheGet(pdev, color_trans->iUniq))) {
         DEBUG_PRINT((pdev, 12, "%s: from cache\n", __FUNCTION__));
-        bitmap->palette = PA(pdev, &internal->palette);
+        bitmap->palette = PA(pdev, &internal->palette, pdev->main_mem_slot);
         return;
     }
 
@@ -945,7 +961,7 @@ static _inline void GetPallette(PDev *pdev, Bitmap *bitmap, XLATEOBJ *color_tran
                                             (color_trans->cEntries << 2));
     internal->refs = 1;
     RingItemInit(&internal->lru_link);
-    bitmap->palette = PA(pdev, &internal->palette);
+    bitmap->palette = PA(pdev, &internal->palette, pdev->main_mem_slot);
     internal->palette.unique = color_trans->iUniq;
     internal->palette.num_ents = (UINT16)color_trans->cEntries;
 
@@ -969,7 +985,7 @@ static void FreeQuicImage(PDev *pdev, Resource *res) // todo: defer
 
     chunk_phys = ((QXLDataChunk *)internal->image.quic.data)->next_chunk;
     while (chunk_phys) {
-        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys);
+        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, chunk);
         ONDBG(pdev->num_bits_pages--);
@@ -1025,12 +1041,12 @@ static int quic_usr_more_space(QuicUsrContext *usr, uint32_t **io_ptr, int rows_
     alloc_size = MIN(MAX(more >> 4, QUIC_BUF_MIN), QUIC_BUF_MAX);
     new_chank = AllocMem(pdev, sizeof(QXLDataChunk) + alloc_size);
     new_chank->data_size = 0;
-    new_chank->prev_chunk = PA(pdev, usr_data->chunk);
+    new_chank->prev_chunk = PA(pdev, usr_data->chunk, pdev->main_mem_slot);
     new_chank->next_chunk = 0;
 
     usr_data->prev_chunks_io_words += usr_data->chunk_io_words;
     usr_data->chunk->data_size = usr_data->chunk_io_words << 2;
-    usr_data->chunk->next_chunk = PA(pdev, new_chank);
+    usr_data->chunk->next_chunk = PA(pdev, new_chank, pdev->main_mem_slot);
     usr_data->chunk = new_chank;
 
     usr_data->chunk_io_words = alloc_size >> 2;
@@ -1124,13 +1140,14 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
     }
 
     if (internal->image.bitmap.palette) {
-        Palette *palette = (Palette *)VA(pdev, internal->image.bitmap.palette);
+        Palette *palette = (Palette *)VA(pdev, internal->image.bitmap.palette,
+                                         pdev->main_mem_slot);
         ReleasePalette(pdev, CONTAINEROF(palette, InternalPalette, palette));
     }
 
     chunk_phys = ((QXLDataChunk *)(&internal->image.bitmap + 1))->next_chunk;
     while (chunk_phys) {
-        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys);
+        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, chunk);
         ONDBG(pdev->num_bits_pages--);
@@ -1175,7 +1192,7 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     chunk->data_size = 0;
     chunk->prev_chunk = 0;
     chunk->next_chunk = 0;
-    internal->image.bitmap.data = PA(pdev, chunk);
+    internal->image.bitmap.data = PA(pdev, chunk, pdev->main_mem_slot);
     internal->image.bitmap.flags = 0;
     internal->image.descriptor.width = internal->image.bitmap.x = width;
     internal->image.descriptor.height = internal->image.bitmap.y = height;
@@ -1393,7 +1410,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys, SURFO
         if (cache_image && cache_image->image) {
             DEBUG_PRINT((pdev, 11, "%s: cached image found %u\n", __FUNCTION__, cache_image->key));
             internal = cache_image->image;
-            *image_phys = PA(pdev, &internal->image);
+            *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
             image_res = (Resource *)((UINT8 *)internal - sizeof(Resource));
             DrawableAddRes(pdev, drawable, image_res);
             return TRUE;
@@ -1469,7 +1486,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys, SURFO
             RingRemove(pdev, &cache_image->lru_link);
         }
     }
-    *image_phys = PA(pdev, &internal->image);
+    *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
     DrawableAddRes(pdev, drawable, image_res);
     RELEASE_RES(pdev, image_res);
     return TRUE;
@@ -1522,7 +1539,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys,
                      key, cache_image->hits));
         if (internal = cache_image->image) {
             DEBUG_PRINT((pdev, 11, "%s: cached image found %u\n", __FUNCTION__, key));
-            *image_phys = PA(pdev, &internal->image);
+            *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
             image_res = (Resource *)((UINT8 *)internal - sizeof(Resource));
             DrawableAddRes(pdev, drawable, image_res);
             return TRUE;
@@ -1565,7 +1582,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys,
             RingRemove(pdev, &cache_image->lru_link);
         }
     }
-    *image_phys = PA(pdev, &internal->image);
+    *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
     DrawableAddRes(pdev, drawable, image_res);
     RELEASE_RES(pdev, image_res);
     return TRUE;
@@ -1579,7 +1596,7 @@ BOOL QXLGetBitsFromCache(PDev *pdev, QXLDrawable *drawable, UINT32 hash_key, PHY
 
     if ((cache_image = ImageCacheGetByKey(pdev, hash_key, FALSE, 0, 0, 0)) &&
                                                                   (internal = cache_image->image)) {
-        *image_phys = PA(pdev, &internal->image);
+        *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
         image_res = (Resource *)((UINT8 *)internal - sizeof(Resource));
         DrawableAddRes(pdev, drawable, image_res);
         return TRUE;
@@ -1639,7 +1656,7 @@ UINT8 *QXLGetBuf(PDev *pdev, QXLDrawable *drawable, PHYSICAL *buf_phys, UINT32 s
     buf_res->refs = 1;
     buf_res->free = FreeBuf;
 
-    *buf_phys = PA(pdev, buf_res->res);
+    *buf_phys = PA(pdev, buf_res->res, pdev->main_mem_slot);
     DrawableAddRes(pdev, drawable, buf_res);
     RELEASE_RES(pdev, buf_res);
     return buf_res->res;
@@ -1666,7 +1683,7 @@ void UpdateArea(PDev *pdev, RECTL *area)
     WaitForCmdRing(pdev);
     cmd = RING_PROD_ITEM(pdev->cmd_ring);
     cmd->type = QXL_CMD_UPDATE;
-    cmd->data = PA(pdev, updat_cmd);
+    cmd->data = PA(pdev, updat_cmd, pdev->main_mem_slot);
     PUSH_CMD(pdev);
     do {
 #ifdef DBG
@@ -1846,7 +1863,7 @@ static void FreeSring(PDev *pdev, Resource *res)
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     chunk_phys = ((QXLString *)res->res)->chunk.next_chunk;
     while (chunk_phys) {
-        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys);
+        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, chunk);
         ONDBG(pdev->num_glyphs_pages--);
@@ -1936,7 +1953,7 @@ BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, PHYSICAL *str_phys, FONTOBJ *f
 
     } while (more);
 
-    *str_phys = PA(pdev, str_res->res);
+    *str_phys = PA(pdev, str_res->res, pdev->main_mem_slot);
     DrawableAddRes(pdev, drawable, str_res);
     RELEASE_RES(pdev, str_res);
 
@@ -1973,7 +1990,7 @@ void PushCursorCmd(PDev *pdev, QXLCursorCmd *cursor_cmd)
     WaitForCursorRing(pdev);
     cmd = RING_PROD_ITEM(pdev->cursor_ring);
     cmd->type = QXL_CMD_CURSOR;
-    cmd->data = PA(pdev, cursor_cmd);
+    cmd->data = PA(pdev, cursor_cmd, pdev->main_mem_slot);
     PUSH_CURSOR_CMD(pdev);
     DEBUG_PRINT((pdev, 8, "%s: done\n", __FUNCTION__));
 }
@@ -2072,7 +2089,7 @@ static void FreeCursor(PDev *pdev, Resource *res)
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     chunk_phys = ((InternalCursor *)res->res)->cursor.chunk.next_chunk;
     while (chunk_phys) {
-        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys);
+        QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, res);
         ONDBG(pdev->num_cursor_pages--);
@@ -2113,7 +2130,7 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     if ((internal = CursorCacheGet(pdev, surf->hsurf, unique))) {
         res = (Resource *)((UINT8 *)internal - sizeof(Resource));
         CursorCmdAddRes(pdev, cmd, res);
-        cmd->u.set.shape = PA(pdev, &internal->cursor);
+        cmd->u.set.shape = PA(pdev, &internal->cursor, pdev->main_mem_slot);
         return TRUE;
     }
 
@@ -2180,7 +2197,7 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     CursorCacheAdd(pdev, internal);
     CursorCmdAddRes(pdev, cmd, res);
     RELEASE_RES(pdev, res);
-    cmd->u.set.shape = PA(pdev, &internal->cursor);
+    cmd->u.set.shape = PA(pdev, &internal->cursor, pdev->main_mem_slot);
     DEBUG_PRINT((pdev, 11, "%s: done, data_size %u\n", __FUNCTION__, cursor->data_size));
     return FALSE;
 }
@@ -2349,7 +2366,7 @@ BOOL GetTransparentCursor(PDev *pdev, QXLCursorCmd *cmd)
 
     CursorCmdAddRes(pdev, cmd, res);
     RELEASE_RES(pdev, res);
-    cmd->u.set.shape = PA(pdev, &internal->cursor);
+    cmd->u.set.shape = PA(pdev, &internal->cursor, pdev->main_mem_slot);
 
     DEBUG_PRINT((pdev, 8, "%s: done\n", __FUNCTION__));
     return TRUE;

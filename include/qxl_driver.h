@@ -34,6 +34,14 @@ enum {
 
 #define QXL_DRIVER_INFO_VERSION 2
 
+typedef struct MemSlot {
+    UINT8 generation;
+    UINT64 start_phys_addr;
+    UINT64 end_phys_addr;
+    UINT64 start_virt_addr;
+    UINT64 end_virt_addr;
+} MemSlot;
+
 typedef struct QXLDriverInfo {
     UINT32 version;
     QXLCommandRing *cmd_ring;
@@ -67,6 +75,11 @@ typedef struct QXLDriverInfo {
 #if (WINVER < 0x0501)
     PQXLWaitForEvent WaitForEvent;
 #endif
+    UINT8 num_mem_slot;
+    UINT8 main_mem_slot_id;
+    UINT8 slot_id_bits;
+    UINT8 slot_gen_bits;
+    MemSlot main_mem_slot;
 } QXLDriverInfo;
 
 

@@ -606,12 +606,28 @@ error:
     return FALSE;
 }
 
+static VOID UpdateMainSlot(PDev *pdev, MemSlot *slot)
+{
+    ADDRESS high_bits;
+
+
+    pdev->mem_slots[pdev->main_mem_slot].slot = *slot;
+
+    high_bits = pdev->main_mem_slot << pdev->slot_gen_bits;
+    high_bits |= slot->generation;
+    high_bits <<= (64 - (pdev->slot_gen_bits + pdev->slot_id_bits));
+    pdev->mem_slots[pdev->main_mem_slot].high_bits = high_bits;
+
+    pdev->va_slot_mask = (~(PHYSICAL)0) >> (pdev->slot_id_bits + pdev->slot_gen_bits);
+}
+
 BOOL PrepareHardware(PDev *pdev)
 {
     VIDEO_MEMORY video_mem;
     VIDEO_MEMORY_INFORMATION video_mem_Info;
     DWORD length;
     QXLDriverInfo dev_info;
+    ADDRESS high_bits;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     if (!SetHardwareMode(pdev)) {
@@ -661,6 +677,20 @@ BOOL PrepareHardware(PDev *pdev)
     pdev->log_buf = dev_info.log_buf;
     pdev->log_level = dev_info.log_level;
 
+    pdev->mem_slots = EngAllocMem(FL_ZERO_MEMORY, sizeof(PMemSlot) * dev_info.num_mem_slot,
+                                  ALLOC_TAG);
+    if (!pdev->mem_slots) {
+        DEBUG_PRINT((NULL, 0, "%s: mem slots alloc failed, 0x%lx\n", __FUNCTION__, pdev));
+        return FALSE;
+    }
+
+    pdev->slot_id_bits = dev_info.slot_id_bits;
+    pdev->slot_gen_bits = dev_info.slot_gen_bits;
+    pdev->main_mem_slot = dev_info.main_mem_slot_id;
+    pdev->num_mem_slot = dev_info.num_mem_slot;
+
+    UpdateMainSlot(pdev, &dev_info.main_mem_slot);
+
     video_mem.RequestedVirtualAddress = NULL;
 
     if (EngDeviceIoControl( pdev->driver, IOCTL_VIDEO_MAP_VIDEO_MEMORY, &video_mem,
@@ -692,7 +722,7 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, in_pdev));
     pdev = (PDev*)in_pdev;
     if (!PrepareHardware(pdev)) {
-        return NULL;
+        goto err;
     }
 
     InitResources(pdev);
@@ -742,7 +772,7 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
     return surf;
 
-    err:
+err:
     DrvDisableSurface((DHPDEV)pdev);
     DEBUG_PRINT((NULL, 0, "%s: 0x%lx err\n", __FUNCTION__, pdev));
     return NULL;
@@ -753,6 +783,11 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
     PDev *pdev = (PDev*)in_pdev;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
+
+    if (pdev->mem_slots) {
+        EngFreeMem(pdev->mem_slots);
+        pdev->mem_slots = NULL;
+    }
 
     if (pdev->surf) {
         EngDeleteSurface(pdev->surf);
@@ -793,7 +828,18 @@ BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     if (enable) {
+        DWORD length;
+        QXLDriverInfo dev_info;
+
         ret = SetHardwareMode(pdev);
+        if (!ret || EngDeviceIoControl(pdev->driver, IOCTL_QXL_GET_INFO, NULL,
+                                       0, &dev_info, sizeof(QXLDriverInfo), &length) ) {
+            DEBUG_PRINT((NULL, 0, "%s: get qxl info failed, 0x%lx\n", __FUNCTION__, pdev));
+            ret = FALSE;
+        }
+
+        UpdateMainSlot(pdev, &dev_info.main_mem_slot);
+
         InitResources(pdev);
     } else {
         DWORD length;
