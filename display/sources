@@ -29,6 +29,5 @@ SOURCES=driver.c        \
         brush.c         \
         mspace.c        \
         quic.c          \
-        lookup3.c       \
         driver.rc
 

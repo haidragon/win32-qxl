@@ -21,7 +21,7 @@
 #include "utils.h"
 #include "mspace.h"
 #include "quic.h"
-#include "lookup3.h"
+#include "murmur_hash2a.h"
 
 #if (WINVER < 0x0501)
 #define WAIT_FOR_EVENT(pdev, event, timeout) (pdev)->WaitForEvent(event, timeout)
@@ -1226,32 +1226,36 @@ static _inline UINT32 GetHash(UINT8 *src, INT32 width, INT32 height, UINT8 forma
     int row;
 
     if (color_trans && color_trans->flXlate == XO_TABLE) {
-        hash_value = hashlittle(color_trans->pulXlate,
-                                sizeof(*color_trans->pulXlate) * color_trans->cEntries, hash_value);
+        hash_value = murmurhash2a(color_trans->pulXlate,
+                                  sizeof(*color_trans->pulXlate) * color_trans->cEntries,
+                                  hash_value);
     }
-    for (row = 0; row < height; row++) {
-#ifdef ADAPTIVE_HASH
-        if (format ==  BITMAP_FMT_32BIT) {
-            for (i = 0; i < line_size; i += 4) {
-                hash_value = hashlittle(row_buf + i, 3, hash_value);
-            }
-        } else {
-            if (format == BITMAP_FMT_4BIT_BE && (width & 0x1)) {
-                last_byte = row_buf[line_size - 1] & 0xF0;
-            } else if (format == BITMAP_FMT_1BIT_BE && (reminder = width & 0x7)) {
-                last_byte = row_buf[line_size - 1] & ~((1 << (8 - reminder)) - 1);
-            }
-            if (last_byte) {
-                hash_value = hashlittle(row_buf, line_size - 1, hash_value);
-                hash_value = hashlittle(&last_byte, 1, hash_value);
+
+    if (format == BITMAP_FMT_32BIT && stride == line_size) {
+        hash_value = murmurhash2ajump3((UINT32 *)row_buf, width * height, hash_value);
+    } else {
+        for (row = 0; row < height; row++) {
+    #ifdef ADAPTIVE_HASH
+            if (format ==  BITMAP_FMT_32BIT) {
+                hash_value = murmurhash2ajump3((UINT32 *)row_buf, width, hash_value);
             } else {
-                hash_value = hashlittle(row_buf, line_size, hash_value);
+                if (format == BITMAP_FMT_4BIT_BE && (width & 0x1)) {
+                    last_byte = row_buf[line_size - 1] & 0xF0;
+                } else if (format == BITMAP_FMT_1BIT_BE && (reminder = width & 0x7)) {
+                    last_byte = row_buf[line_size - 1] & ~((1 << (8 - reminder)) - 1);
+                }
+                if (last_byte) {
+                    hash_value = murmurhash2a(row_buf, line_size - 1, hash_value);
+                    hash_value = murmurhash2a(&last_byte, 1, hash_value);
+                } else {
+                    hash_value = murmurhash2a(row_buf, line_size, hash_value);
+                }
             }
+    #else
+            hash_value = murmurhash2a(row_buf, line_size, hash_value);
+    #endif
+            row_buf += stride;
         }
-#else
-        hash_value = hashlittle(row_buf, line_size, hash_value);
-#endif
-        row_buf += stride;
     }
     return hash_value;
 }
