@@ -117,7 +117,7 @@ void DebugPrint(PDev *pdev, int level, const char *message, ...)
 {
     va_list ap;
 
-    if (level >= (pdev ? (int)*pdev->log_level : DBG_LEVEL)) {
+    if (level > (pdev ? (int)*pdev->log_level : DBG_LEVEL)) {
         return;
     }
     va_start(ap, message);
