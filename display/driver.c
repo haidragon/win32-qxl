@@ -34,6 +34,7 @@
 #include "utils.h"
 #include "mspace.h"
 #include "res.h"
+#include "surface.h"
 
 #define DEVICE_NAME L"qxldd"
 
@@ -212,6 +213,8 @@ DEVINFO dev_default = {
     GCAPS2_ALPHACURSOR,
 };
 
+BOOL PrepareHardware(PDev *pdev);
+
 static void mspace_print(void *user_data, char *format, ...)
 {
     PDev *pdev = (PDev *)user_data;
@@ -237,6 +240,7 @@ BOOL DrvEnableDriver(ULONG engine_version, ULONG enable_data_size, PDRVENABLEDAT
     mspace_set_abort_func(mspace_abort);
     mspace_set_print_func(mspace_print);
     ResInitGlobals();
+    InitGlobalRes();
     DEBUG_PRINT((NULL, 1, "%s: end\n", __FUNCTION__));
     return TRUE;
 }
@@ -245,6 +249,7 @@ VOID DrvDisableDriver(VOID)
 {
     DEBUG_PRINT((NULL, 1, "%s\n", __FUNCTION__));
     ResDestroyGlobals();
+    CleanGlobalRes();
 }
 
 DWORD GetAvailableModes(HANDLE driver, PVIDEO_MODE_INFORMATION *mode_info,
@@ -554,6 +559,37 @@ VOID DrvCompletePDEV(DHPDEV in_pdev, HDEV gdi_dev)
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
 }
 
+static VOID HideMouse(PDev *pdev)
+{
+    QXLCursorCmd *cursor_cmd;
+
+    cursor_cmd = CursorCmd(pdev);
+    cursor_cmd->type = QXL_CURSOR_HIDE;
+
+    PushCursorCmd(pdev, cursor_cmd);
+}
+
+static VOID CreatePrimarySurface(PDev *pdev, UINT32 depth, UINT32 width, UINT32 height,
+                                 PHYSICAL phys_mem)
+{
+    pdev->primary_surface_create->depth = depth;
+    pdev->primary_surface_create->width = width;
+    pdev->primary_surface_create->height = height;
+    pdev->primary_surface_create->stride = -(INT32)width * 4;
+    pdev->primary_surface_create->mem = phys_mem;
+
+    pdev->primary_surface_create->flags = 0;
+    pdev->primary_surface_create->type = QXL_SURF_TYPE_PRIMARY;
+
+    WRITE_PORT_UCHAR(pdev->create_primary_port, 0);
+}
+
+static void DestroyPrimarySurface(PDev *pdev)
+{
+    HideMouse(pdev);
+    WRITE_PORT_UCHAR(pdev->destroy_primary_port, 0);
+}
+
 BOOL SetHardwareMode(PDev *pdev)
 {
     VIDEO_MODE_INFORMATION video_info;
@@ -570,40 +606,6 @@ BOOL SetHardwareMode(PDev *pdev)
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx OK\n", __FUNCTION__, pdev));
     return TRUE;
-}
-
-static BOOL InitDrawArea(PDev *pdev, UINT8 *base)
-{
-    HSURF bitmap;
-    SIZEL  size;
-    SURFOBJ* surf_obj;
-
-    size.cx = pdev->resolution.cx;
-    size.cy = pdev->resolution.cy;
-
-    if (!(bitmap = (HSURF)EngCreateBitmap(size, size.cx << 2, BMF_32BPP, 0, base))) {
-        DEBUG_PRINT((pdev, 0, "%s: EngCreateBitmap failed\n", __FUNCTION__));
-        return FALSE;
-    }
-
-    if (!EngAssociateSurface(bitmap, pdev->eng, 0)) {
-        DEBUG_PRINT((pdev, 0, "%s: EngAssociateSurface failed\n", __FUNCTION__));
-        goto error;
-
-    }
-
-    if (!(surf_obj = EngLockSurface(bitmap))) {
-        DEBUG_PRINT((pdev, 0, "%s: EngLockSurface failed\n", __FUNCTION__));
-        goto error;
-    }
-
-    pdev->draw_bitmap = bitmap;
-    pdev->draw_surf = surf_obj;
-    return TRUE;
-
-error:
-    EngDeleteSurface(bitmap);
-    return FALSE;
 }
 
 static VOID UpdateMainSlot(PDev *pdev, MemSlot *slot)
@@ -630,6 +632,7 @@ BOOL PrepareHardware(PDev *pdev)
     ADDRESS high_bits;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
+
     if (!SetHardwareMode(pdev)) {
         DEBUG_PRINT((NULL, 0, "%s: set mode failed, 0x%lx\n", __FUNCTION__, pdev));
         return FALSE;
@@ -659,12 +662,11 @@ BOOL PrepareHardware(PDev *pdev)
     pdev->WaitForEvent = dev_info.WaitForEvent;
 #endif
 
-    pdev->num_io_pages = dev_info.num_io_pages;
+    pdev->num_io_pages = dev_info.num_pages;
     pdev->io_pages_virt = dev_info.io_pages_virt;
     pdev->io_pages_phys = dev_info.io_pages_phys;
 
     pdev->dev_update_id = dev_info.update_id;
-    pdev->update_id = *pdev->dev_update_id;
 
     pdev->update_area_port = dev_info.update_area_port;
     pdev->update_area = dev_info.update_area;
@@ -704,42 +706,99 @@ BOOL PrepareHardware(PDev *pdev)
     pdev->fb = (BYTE*)video_mem_Info.FrameBufferBase;
     pdev->fb_size = video_mem_Info.FrameBufferLength;
 
-    if (!InitDrawArea(pdev, dev_info.draw_area)) {
-        DEBUG_PRINT((NULL, 0, "%s: InitDrawArea failed, 0x%lx\n", __FUNCTION__, pdev));
-        return FALSE;
-    }
+    pdev->destroy_surface_wait_port = dev_info.destroy_surface_wait_port;
+    pdev->create_primary_port = dev_info.create_primary_port;
+    pdev->destroy_primary_port = dev_info.destroy_primary_port;
+
+    pdev->primary_memory_start = dev_info.surface0_area;
+    pdev->primary_memory_size = dev_info.surface0_area_size;
+
+    pdev->primary_surface_create = dev_info.primary_surface_create;
+
+    pdev->dev_id = dev_info.dev_id;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit: 0x%lx %ul\n", __FUNCTION__, pdev,
                  pdev->fb, pdev->fb_size));
     return TRUE;
 }
 
+static VOID UnmapFB(PDev *pdev)
+{
+    VIDEO_MEMORY video_mem;
+    DWORD length;
+
+    if (!pdev->fb) {
+        return;
+    }
+
+    video_mem.RequestedVirtualAddress = pdev->fb;
+    pdev->fb = 0;
+    pdev->fb_size = 0;
+    if (EngDeviceIoControl(pdev->driver,
+                           IOCTL_VIDEO_UNMAP_VIDEO_MEMORY,
+                           &video_mem,
+                           sizeof(video_mem),
+                           NULL,
+                           0,
+                           &length)) {
+        DEBUG_PRINT((NULL, 0, "%s: unmpap failed, 0x%lx\n", __FUNCTION__, pdev));
+    }
+}
+
+VOID EnableQXLSurface(PDev *pdev)
+{
+    UINT32 depth;
+
+    switch (pdev->bitmap_format) {
+        case BMF_8BPP:
+            PANIC(pdev, "bad formart type 8bpp\n");
+        case BMF_16BPP:
+            depth = 16;
+            break;
+        case BMF_24BPP:
+            depth = 32;
+            break;
+        case BMF_32BPP:
+            depth = 32;
+            break;
+        default:
+            PANIC(pdev, "bad formart type\n");
+    };
+
+    CreatePrimarySurface(pdev, depth, pdev->resolution.cx, pdev->resolution.cy, pdev->surf_phys);
+    pdev->surf_enable = TRUE;
+}
+
 HSURF DrvEnableSurface(DHPDEV in_pdev)
 {
     PDev *pdev;
     HSURF surf;
+    DWORD length;
+    PHYSICAL phys_mem;
+    UINT8 *base_mem;
+    DrawArea drawarea;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, in_pdev));
+
     pdev = (PDev*)in_pdev;
     if (!PrepareHardware(pdev)) {
-        goto err;
+        return FALSE;
     }
-
     InitResources(pdev);
 
-    DEBUG_PRINT((NULL, 1, "%s: EngCreateDeviceSurface(0x%lx, %ld:%ld, %lu)\n",
-                 __FUNCTION__,
-                 pdev,
-                 pdev->resolution.cx,
-                 pdev->resolution.cy,
-                 pdev->bitmap_format));
-
-    if (!(surf = (HSURF)EngCreateDeviceSurface((DHSURF)pdev, pdev->resolution,
-                                               pdev->bitmap_format))) {
+    if (!(surf = (HSURF)CreateDeviceBitmap(pdev, pdev->resolution, pdev->bitmap_format, &phys_mem,
+                                           &base_mem, DEVICE_BITMAP_ALLOCATION_TYPE_SURF0))) {
         DEBUG_PRINT((NULL, 0, "%s: create device surface failed, 0x%lx\n",
                      __FUNCTION__, pdev));
         goto err;
     }
+
+    if (!CreateDrawArea(pdev, &drawarea, base_mem, pdev->resolution.cx, pdev->resolution.cy)) {
+        goto err;
+    }
+
+    pdev->draw_bitmap = drawarea.bitmap;
+    pdev->draw_surf = drawarea.surf_obj;
 
     DEBUG_PRINT((NULL, 1, "%s: EngModifySurface(0x%lx, 0x%lx, 0, MS_NOTSYSTEMMEMORY, "
                  "0x%lx, 0x%lx, %lu, NULL)\n",
@@ -751,24 +810,11 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
                  pdev->stride));
 
     pdev->surf = surf;
-    if (!EngModifySurface(surf, pdev->eng,
-                          HOOK_SYNCHRONIZE | HOOK_COPYBITS | HOOK_BITBLT | HOOK_TEXTOUT |
-                          HOOK_STROKEPATH | HOOK_STRETCHBLT | HOOK_STRETCHBLTROP |
-                          HOOK_TRANSPARENTBLT | HOOK_ALPHABLEND
-#ifdef CALL_TEST
-                          | HOOK_PLGBLT | HOOK_FILLPATH | HOOK_STROKEANDFILLPATH | HOOK_LINETO |
-                          HOOK_GRADIENTFILL
-#endif
-                          ,
-                          MS_NOTSYSTEMMEMORY,
-                          (DHSURF)pdev,
-                          NULL,
-                          0,
-                          NULL)) {
-        DEBUG_PRINT((NULL, 0, "%s: modify surface failed, 0x%lx\n",
-                     __FUNCTION__, pdev));
-        goto err;
-    }
+    pdev->surf_phys = phys_mem;
+    pdev->surf_base = base_mem;
+
+    EnableQXLSurface(pdev);
+
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
     return surf;
 
@@ -778,81 +824,62 @@ err:
     return NULL;
 }
 
+VOID DisableQXLSurface(PDev *pdev)
+{
+    DrawArea drawarea;
+
+    if (pdev->surf_enable) {
+        DestroyPrimarySurface(pdev);
+        SyncResources(pdev);
+        pdev->surf_enable = FALSE;
+    }
+}
+
 VOID DrvDisableSurface(DHPDEV in_pdev)
 {
     PDev *pdev = (PDev*)in_pdev;
+    DrawArea drawarea;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
+
+    DisableQXLSurface(pdev);
+
+    UnmapFB(pdev);
+
+    if (pdev->surf) {
+        DeleteDeviceBitmap(pdev->surf);
+        pdev->surf = NULL;
+    }
+
+    if (pdev->draw_surf) {
+        drawarea.bitmap = pdev->draw_bitmap;
+        drawarea.surf_obj = pdev->draw_surf;
+        FreeDrawArea(&drawarea);
+        pdev->draw_surf = NULL;
+        pdev->draw_bitmap = NULL;
+    }
 
     if (pdev->mem_slots) {
         EngFreeMem(pdev->mem_slots);
         pdev->mem_slots = NULL;
     }
 
-    if (pdev->surf) {
-        EngDeleteSurface(pdev->surf);
-        pdev->surf = NULL;
-    }
-
-    if (pdev->draw_surf) {
-        EngUnlockSurface(pdev->draw_surf);
-        pdev->draw_surf = NULL;
-        EngDeleteSurface(pdev->draw_bitmap);
-        pdev->draw_bitmap = NULL;
-    }
-
-    if (pdev->fb) {
-        VIDEO_MEMORY video_mem;
-        DWORD length;
-
-        video_mem.RequestedVirtualAddress = pdev->fb;
-        pdev->fb = 0;
-        pdev->fb_size = 0;
-        if (EngDeviceIoControl(pdev->driver,
-                               IOCTL_VIDEO_UNMAP_VIDEO_MEMORY,
-                               &video_mem,
-                               sizeof(video_mem),
-                               NULL,
-                               0,
-                               &length)) {
-            DEBUG_PRINT((NULL, 0, "%s: unmpap failed, 0x%lx\n", __FUNCTION__, pdev));
-        }
-    }
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
 }
 
 BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
 {
     PDev* pdev = (PDev*)in_pdev;
-    BOOL ret;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     if (enable) {
-        DWORD length;
-        QXLDriverInfo dev_info;
-
-        ret = SetHardwareMode(pdev);
-        if (!ret || EngDeviceIoControl(pdev->driver, IOCTL_QXL_GET_INFO, NULL,
-                                       0, &dev_info, sizeof(QXLDriverInfo), &length) ) {
-            DEBUG_PRINT((NULL, 0, "%s: get qxl info failed, 0x%lx\n", __FUNCTION__, pdev));
-            ret = FALSE;
-        }
-
-        UpdateMainSlot(pdev, &dev_info.main_mem_slot);
-
         InitResources(pdev);
+        EnableQXLSurface(pdev);
     } else {
-        DWORD length;
-        if (EngDeviceIoControl(pdev->driver, IOCTL_VIDEO_RESET_DEVICE,
-                               NULL, 0, NULL, 0, &length)) {
-            DEBUG_PRINT((NULL, 0, "%s: reset failed 0x%lx\n", __FUNCTION__, pdev));
-            ret = FALSE;
-        } else {
-            ret = TRUE;
-        }
+        DisableQXLSurface(pdev);
     }
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit %s\n", __FUNCTION__, pdev, ret ? "TRUE" : "FALSE"));
-    return ret;
+    DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit TRUE\n", __FUNCTION__, pdev));
+    return TRUE;
 }
 
 ULONG DrvGetModes(HANDLE driver, ULONG dev_modes_size, DEVMODEW *dev_modes)
@@ -1242,20 +1269,20 @@ err:
 
 void CountCall(PDev *pdev, int counter)
 {
-    if (pdev->count_calls) {
+    if (pdev->Res.count_calls) {
         int i;
 
-        pdev->call_counters[counter]++;
-        if((++pdev->total_calls % 500) == 0) {
-            DEBUG_PRINT((pdev, 0, "total eng calls is %u\n", pdev->total_calls));
+        pdev->Res.call_counters[counter]++;
+        if((++pdev->Res.total_calls % 500) == 0) {
+            DEBUG_PRINT((pdev, 0, "total eng calls is %u\n", pdev->Res.total_calls));
             for (i = 0; i < NUM_CALL_COUNTERS; i++) {
                 DEBUG_PRINT((pdev, 0, "%s count is %u\n",
-                             counters_info[i].name, pdev->call_counters[i]));
+                             counters_info[i].name, pdev->Res.call_counters[i]));
             }
         }
-        pdev->count_calls = FALSE;
+        pdev->Res.count_calls = FALSE;
     } else if (counters_info[counter].effective) {
-        pdev->count_calls = TRUE;
+        pdev->Res.count_calls = TRUE;
     }
 }
 

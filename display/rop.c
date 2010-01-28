@@ -381,8 +381,8 @@ static BOOL GetBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *bitmap_phys, 
         ASSERT(pdev, (PDev *)surf->dhpdev == pdev);
         DEBUG_PRINT((pdev, 9, "%s copy from self\n", __FUNCTION__));
         *bitmap_phys = 0;
-        drawable->bitmap_offset = (UINT16)((UINT8 *)bitmap_phys - (UINT8 *)drawable);
-        drawable->bitmap_area = *area;
+        drawable->self_bitmap = TRUE;
+        drawable->self_bitmap_area = *area;
         area->right = area->right - area->left;
         area->left = 0;
         area->bottom = area->bottom - area->top;

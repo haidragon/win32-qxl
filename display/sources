@@ -29,5 +29,6 @@ SOURCES=driver.c        \
         brush.c         \
         mspace.c        \
         quic.c          \
+        surface.c       \
         driver.rc
 

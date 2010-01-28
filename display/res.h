@@ -25,6 +25,8 @@ UINT64 ReleaseOutput(PDev *pdev, UINT64 output_id);
 QXLDrawable *Drawable(PDev *pdev, UINT8 type, RECTL *area, CLIPOBJ *clip);
 void PushDrawable(PDev *pdev, QXLDrawable *drawable);
 
+BOOL QXLGetSurface(PDev *pdev, PHYSICAL *surface_phys, UINT32 x, UINT32 y, UINT32 depth,
+                    UINT8 **base_mem, UINT8 allocation_type);
 BOOL QXLGetPath(PDev *pdev, QXLDrawable *drawable, PHYSICAL *path_phys, PATHOBJ *path);
 BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, QMask *qxl_mask, SURFOBJ *mask, POINTL *pos,
                 BOOL invers, LONG width, LONG height);

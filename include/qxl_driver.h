@@ -54,12 +54,12 @@ typedef struct QXLDriverInfo {
     PEVENT cursor_event;
     PEVENT sleep_event;
 
-    UINT32 num_io_pages;
+    UINT32 num_pages;
     void *io_pages_virt;
     UINT64 io_pages_phys;
 
-    UINT8 *draw_area;
-    UINT32 draw_area_size;
+    UINT8 *surface0_area;
+    UINT32 surface0_area_size;
 
     UINT32 *update_id;
     UINT32 *compression_level;
@@ -80,6 +80,14 @@ typedef struct QXLDriverInfo {
     UINT8 slot_id_bits;
     UINT8 slot_gen_bits;
     MemSlot main_mem_slot;
+
+    UINT32 destroy_surface_wait_port;
+    UINT32 create_primary_port;
+    UINT32 destroy_primary_port;
+
+    UINT32 dev_id;
+
+    QXLSurfaceCreate *primary_surface_create;
 } QXLDriverInfo;
 
 

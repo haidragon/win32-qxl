@@ -73,6 +73,7 @@ typedef struct QXLExtension {
     PHYSICAL_ADDRESS vram_physical;
     ULONG vram_size;
 
+    ULONG current_mode;
     ULONG n_modes;
     PVIDEO_MODE_INFORMATION modes;
 
@@ -226,7 +227,7 @@ VP_STATUS InitRam(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
         return ERROR_INVALID_DATA;
     }
 
-    if (ram_size < dev->rom->pages_offset + (dev->rom->num_io_pages << PAGE_SHIFT) ) {
+    if (ram_size < dev->rom->num_pages << PAGE_SHIFT) {
         DEBUG_PRINT((0, "%s: bad ram size\n", __FUNCTION__));
         return ERROR_INVALID_DATA;
     }
@@ -628,15 +629,15 @@ static BOOLEAN CreateMemSlots(QXLExtension *dev_ext)
         return FALSE;
     }
 
-    dev_ext->mem_slots[slot_id].start_phys_addr = dev_ext->ram_physical.QuadPart +
-                                                  dev_ext->rom->pages_offset;
+    dev_ext->mem_slots[slot_id].start_phys_addr = dev_ext->ram_physical.QuadPart;
     dev_ext->mem_slots[slot_id].end_phys_addr = dev_ext->mem_slots[slot_id].start_phys_addr +
-                                                dev_ext->rom->num_io_pages * PAGE_SIZE;
+                                                dev_ext->rom->surface0_area_size +
+                                                dev_ext->rom->num_pages * PAGE_SIZE;
 
-    dev_ext->mem_slots[slot_id].start_virt_addr = (UINT64)dev_ext->ram_start +
-                                                  dev_ext->rom->pages_offset;
+    dev_ext->mem_slots[slot_id].start_virt_addr = (UINT64)dev_ext->ram_start;
     dev_ext->mem_slots[slot_id].end_virt_addr = dev_ext->mem_slots[slot_id].start_virt_addr +
-                                                dev_ext->rom->num_io_pages * PAGE_SIZE;
+                                                dev_ext->rom->surface0_area_size +
+                                                dev_ext->rom->num_pages * PAGE_SIZE;
 
     dev_ext->ram_header->mem_slot.mem_start = dev_ext->mem_slots[slot_id].start_phys_addr;
     dev_ext->ram_header->mem_slot.mem_end = dev_ext->mem_slots[slot_id].end_phys_addr;
@@ -658,6 +659,7 @@ void HWReset(QXLExtension *dev_ext)
     PAGED_CODE();
     DEBUG_PRINT((0, "%s\n", __FUNCTION__));
     VideoPortWritePortUchar((PUCHAR)dev_ext->io_base + QXL_IO_RESET, 0);
+    dev_ext->ram_header->int_mask = ~0;
     CreateMemSlots(dev_ext);
     DEBUG_PRINT((0, "%s: done\n", __FUNCTION__));
 }
@@ -828,15 +830,13 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
                 goto err;
             }
             request_mode = ((PVIDEO_MODE)packet->InputBuffer)->RequestedMode;
+
+            dev_ext->current_mode = request_mode;
             DEBUG_PRINT((0, "%s: mode %u\n", __FUNCTION__, request_mode));
             if (!IsValidMode(dev_ext, request_mode)) {
                 error = ERROR_INVALID_PARAMETER;
                 goto err;
             }
-            VideoPortWritePortUchar((PUCHAR)dev_ext->io_base + QXL_IO_SET_MODE,
-                                    (UCHAR)request_mode);
-            dev_ext->ram_header->int_mask = ~0;
-            VideoPortWritePortUchar((PUCHAR)dev_ext->io_base + QXL_IO_UPDATE_IRQ, 0);
         }
         break;
     case IOCTL_VIDEO_QUERY_CURRENT_MODE: {
@@ -850,7 +850,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
                 goto err;
             }
 
-            if ((inf = FindMode(dev_ext, dev_ext->rom->mode)) == NULL) {
+            if ((inf = FindMode(dev_ext, dev_ext->current_mode)) == NULL) {
                 DEBUG_PRINT((0, "%s: mod info not found\n", __FUNCTION__));
                 error = ERROR_INVALID_DATA;
                 goto err;
@@ -949,8 +949,8 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             driver_info->log_port = dev_ext->io_port + QXL_IO_LOG;
             driver_info->log_buf = dev_ext->ram_header->log_buf;
 
-            driver_info->draw_area = dev_ext->ram_start + dev_ext->rom->draw_area_offset;
-            driver_info->draw_area_size = dev_ext->rom->draw_area_size;
+            driver_info->surface0_area = dev_ext->ram_start;
+            driver_info->surface0_area_size = dev_ext->rom->surface0_area_size;
             driver_info->update_id = &dev_ext->rom->update_id;
             driver_info->mm_clock = &dev_ext->rom->mm_clock;
             driver_info->compression_level = &dev_ext->rom->compression_level;
@@ -958,10 +958,10 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             driver_info->update_area_port = dev_ext->io_port + QXL_IO_UPDATE_AREA;
             driver_info->update_area = &dev_ext->ram_header->update_area;
 
-            driver_info->num_io_pages = dev_ext->rom->num_io_pages;
-            driver_info->io_pages_virt = dev_ext->ram_start + dev_ext->rom->pages_offset;
+            driver_info->num_pages = dev_ext->rom->num_pages;
+            driver_info->io_pages_virt = dev_ext->ram_start + driver_info->surface0_area_size;
             driver_info->io_pages_phys = dev_ext->ram_physical.QuadPart +
-                                                                dev_ext->rom->pages_offset;
+                                                                    driver_info->surface0_area_size;
 
             driver_info->main_mem_slot_id = dev_ext->rom->slots_start;
             driver_info->num_mem_slot = dev_ext->rom->slots_end;
@@ -972,6 +972,13 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
 #if (WINVER < 0x0501)
             driver_info->WaitForEvent = QXLWaitForEvent;
 #endif
+            driver_info->destroy_surface_wait_port = dev_ext->io_port + QXL_IO_DESTROY_SURFACE_WAIT;
+            driver_info->create_primary_port = dev_ext->io_port + QXL_IO_CREATE_PRIMARY;
+            driver_info->destroy_primary_port = dev_ext->io_port + QXL_IO_DESTROY_PRIMARY;
+
+            driver_info->primary_surface_create = &dev_ext->ram_header->create_surface;
+
+            driver_info->dev_id = dev_ext->rom->id;
         }
         break;
     default:

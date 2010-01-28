@@ -51,6 +51,11 @@
 #define ONDBG(x)
 #endif
 
+#define PANIC(pdev, str) {                                      \
+    DebugPrint(pdev, 0, "PANIC: %s @ %s\n", str, __FUNCTION__); \
+    EngDebugBreak();                                            \
+}
+
 typedef enum {
     QXL_SUCCESS,
     QXL_FAILED,
@@ -135,11 +140,55 @@ typedef struct PMemSlot {
     ADDRESS high_bits;
 } PMemSlot;
 
+typedef struct DevResDynamic {
+    CacheImage cache_image_pool[IMAGE_POOL_SIZE];
+    Ring cache_image_lru;
+    Ring cursors_lru;
+    Ring palette_lru;
+} DevResDynamic;
+
+typedef struct DevRes {
+    mspace _mspace;
+    UINT8 *mspace_start;
+    UINT8 *mspace_end;
+    BOOL need_init;
+    UINT64 free_outputs;
+    UINT32 update_id;
+
+    DevResDynamic *dynamic;
+
+    ImageKey image_key_lookup[IMAGE_KEY_HASH_SIZE];
+    struct CacheImage *image_cache[IMAGE_HASH_SIZE];
+    struct InternalCursor *cursor_cache[CURSOR_HASH_SIZE];
+    UINT32 num_cursors;
+    UINT32 last_cursor_id;
+    struct InternalPalette *palette_cache[PALETTE_HASH_SIZE];
+    UINT32 num_palettes;
+
+#ifdef DBG
+    int num_free_pages;
+    int num_outputs;
+    int num_path_pages;
+    int num_rects_pages;
+    int num_bits_pages;
+    int num_buf_pages;
+    int num_glyphs_pages;
+    int num_cursor_pages;
+#endif
+
+#ifdef CALL_TEST
+    BOOL count_calls;
+    UINT32 total_calls;
+    UINT32 call_counters[NUM_CALL_COUNTERS];
+#endif
+} DevRes;
+
 typedef struct PDev {
     HANDLE driver;
     HDEV eng;
     HPALETTE palette;
     HSURF surf;
+    UINT8 surf_enable;
     DWORD video_mode_index;
     SIZEL resolution;
     UINT32 max_bitmap_size;
@@ -151,6 +200,9 @@ typedef struct PDev {
     FLONG green_mask;
     FLONG blue_mask;
     ULONG fp_state_size;
+
+    PHYSICAL surf_phys;
+    UINT8 *surf_base;
 
     QuicData *quic_data;
 
@@ -185,13 +237,6 @@ typedef struct PDev {
     UINT8 *io_pages_virt;
     UINT64 io_pages_phys;
 
-    mspace mspace;
-    UINT8 *mspace_start;
-    UINT8 *mspace_end;
-
-    UINT64 free_outputs;
-
-    UINT32 update_id;
     UINT32 *dev_update_id;
 
     UINT32 update_area_port;
@@ -201,51 +246,37 @@ typedef struct PDev {
 
     UINT32 *compression_level;
 
-    ImageKey image_key_lookup[IMAGE_KEY_HASH_SIZE];
-    CacheImage cache_image_pool[IMAGE_POOL_SIZE];
-    Ring cache_image_lru;
-    struct CacheImage *image_cache[IMAGE_HASH_SIZE];
-
-    struct InternalCursor *cursor_cache[CURSOR_HASH_SIZE];
-    Ring cursors_lru;
-    UINT32 num_cursors;
-    UINT32 last_cursor_id;
     FLONG cursor_trail;
-
-    struct InternalPalette *palette_cache[PALETTE_HASH_SIZE];
-    Ring palette_lru;
-    UINT32 num_palettes;
-
-    Ring update_trace;
-    UpdateTrace update_trace_items[NUM_UPDATE_TRACE_ITEMS];
-
-#ifdef DBG
-    int num_free_pages;
-    int num_outputs;
-    int num_path_pages;
-    int num_rects_pages;
-    int num_bits_pages;
-    int num_buf_pages;
-    int num_glyphs_pages;
-    int num_cursor_pages;
-#endif
-
-#ifdef CALL_TEST
-    BOOL count_calls;
-    UINT32 total_calls;
-    UINT32 call_counters[NUM_CALL_COUNTERS];
-#endif
 
 #if (WINVER < 0x0501)
     PQXLWaitForEvent WaitForEvent;
 #endif
+
+    UINT32 create_primary_port;
+    UINT32 destroy_primary_port;
+    UINT32 destroy_surface_wait_port;
+
+    UINT8* primary_memory_start;
+    UINT32 primary_memory_size;
+
+    QXLSurfaceCreate *primary_surface_create;
+
+    UINT32 dev_id;
+
+    DevRes Res;
+
+    Ring update_trace;
+    UpdateTrace update_trace_items[NUM_UPDATE_TRACE_ITEMS];
 } PDev;
 
 
 void DebugPrintV(PDev *pdev, const char *message, va_list ap);
 void DebugPrint(PDev *pdev, int level, const char *message, ...);
 
+void InitGlobalRes();
+void CleanGlobalRes();
 void InitResources(PDev *pdev);
+void SyncResources(PDev *pdev);
 
 #ifdef CALL_TEST
 void CountCall(PDev *pdev, int counter);
