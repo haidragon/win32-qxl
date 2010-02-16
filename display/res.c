@@ -90,6 +90,8 @@ typedef struct QXLOutput {
     UINT8 data[0];
 } QXLOutput;
 
+static int have_sse2 = FALSE;
+
 
 UINT64 ReleaseOutput(PDev *pdev, UINT64 output_id)
 {
@@ -798,26 +800,229 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
     return TRUE;
 }
 
+static _inline void fast_memcpy_aligment(void *dest, const void *src, size_t len)
+{
+    _asm
+    {
+        mov ecx, len
+        mov esi, src
+        mov edi, dest
+
+        cmp ecx, 128
+        jb try_to_copy64
+ 
+        prefetchnta [esi]
+        copy_128:
+            prefetchnta [esi + 64]
+
+            movdqa xmm0, [esi]
+            movdqa xmm1, [esi + 16]
+            movdqa xmm2, [esi + 32]
+            movdqa xmm3, [esi + 48]
+
+            prefetchnta [esi + 128]
+
+            movntdq [edi], xmm0
+            movntdq [edi + 16], xmm1
+            movntdq [edi + 32], xmm2
+            movntdq [edi + 48], xmm3
+
+            movdqa xmm0, [esi + 64]
+            movdqa xmm1, [esi + 80]
+            movdqa xmm2, [esi + 96]
+            movdqa xmm3, [esi + 112]
+
+            movntdq [edi + 64], xmm0
+            movntdq [edi + 80], xmm1
+            movntdq [edi + 96], xmm2
+            movntdq [edi + 112], xmm3
+
+            add edi, 128
+            add esi, 128
+            sub ecx, 128
+            cmp ecx, 128
+            jae copy_128
+ 
+       try_to_copy64:
+            cmp ecx, 64
+            jb try_to_copy32
+
+             movdqa xmm0, [esi]
+             movdqa xmm1, [esi + 16]
+             movdqa xmm2, [esi + 32]
+             movdqa xmm3, [esi + 48]
+
+             movntdq [edi], xmm0
+             movntdq [edi + 16], xmm1
+             movntdq [edi + 32], xmm2
+             movntdq [edi + 48], xmm3
+             
+             add edi, 64
+             add esi, 64
+             sub ecx, 64
+             prefetchnta [esi]
+
+        try_to_copy32:
+             cmp ecx, 32
+             jb try_to_copy16
+
+             movdqa xmm0, [esi]
+             movdqa xmm1, [esi + 16] 
+             movntdq [edi], xmm0
+             movntdq [edi + 16], xmm1
+
+             add edi, 32 
+             add esi, 32 
+             sub ecx, 32
+
+        try_to_copy16:
+             cmp ecx, 16
+             jb try_to_copy4
+
+             movdqa xmm0, [esi]
+             movntdq [edi], xmm0
+
+             add edi, 16
+             add esi, 16
+             sub ecx, 16
+
+
+        try_to_copy4:
+            cmp ecx, 4
+            jb try_to_copy_1 
+            movsd
+            sub ecx, 4
+            jmp try_to_copy4
+
+        try_to_copy_1:     
+            rep movsb
+
+        sfence
+    }
+}
+
+static _inline void fast_memcpy_unaligment(void *dest, const void *src, size_t len)
+{
+    _asm
+    {
+        mov ecx, len
+        mov esi, src
+        mov edi, dest
+
+        cmp ecx, 128
+        jb try_to_copy64
+ 
+        prefetchnta [esi]
+        copy_128:
+            prefetchnta [esi + 64]
+
+            movdqu xmm0, [esi]
+            movdqu xmm1, [esi + 16]
+            movdqu xmm2, [esi + 32]
+            movdqu xmm3, [esi + 48]
+
+            prefetchnta [esi + 128]
+
+            movntdq [edi], xmm0
+            movntdq [edi + 16], xmm1
+            movntdq [edi + 32], xmm2
+            movntdq [edi + 48], xmm3
+
+            movdqu xmm0, [esi + 64]
+            movdqu xmm1, [esi + 80]
+            movdqu xmm2, [esi + 96]
+            movdqu xmm3, [esi + 112]
+
+            movntdq [edi + 64], xmm0
+            movntdq [edi + 80], xmm1
+            movntdq [edi + 96], xmm2
+            movntdq [edi + 112], xmm3
+
+            add edi, 128
+            add esi, 128
+            sub ecx, 128
+            cmp ecx, 128
+            jae copy_128
+ 
+       try_to_copy64:
+            cmp ecx, 64
+            jb try_to_copy32
+
+             movdqu xmm0, [esi]
+             movdqu xmm1, [esi + 16]
+             movdqu xmm2, [esi + 32]
+             movdqu xmm3, [esi + 48]
+
+             movntdq [edi], xmm0
+             movntdq [edi + 16], xmm1
+             movntdq [edi + 32], xmm2
+             movntdq [edi + 48], xmm3
+             
+             add edi, 64
+             add esi, 64
+             sub ecx, 64
+             prefetchnta [esi]
+
+        try_to_copy32:
+             cmp ecx, 32
+             jb try_to_copy16
+
+             movdqu xmm0, [esi]
+             movdqu xmm1, [esi + 16] 
+             movntdq [edi], xmm0
+             movntdq [edi + 16], xmm1
+
+             add edi, 32 
+             add esi, 32 
+             sub ecx, 32
+
+        try_to_copy16:
+             cmp ecx, 16
+             jb try_to_copy4
+
+             movdqu xmm0, [esi]
+             movntdq [edi], xmm0
+
+             add edi, 16
+             add esi, 16
+             sub ecx, 16
+
+
+        try_to_copy4:
+            cmp ecx, 4
+            jb try_to_copy_1 
+            movsd
+            sub ecx, 4
+            jmp try_to_copy4
+
+        try_to_copy_1:     
+            rep movsb
+
+        sfence
+    }
+}
+
 #ifdef DBG
     #define PutBytesAlign __PutBytesAlign
-    #define PutBytes(pdev, chunk, now, end, src, size, page_counter, alloc_size)\
-    __PutBytesAlign(pdev, chunk, now, end, src, size, page_counter, alloc_size, 1)
+#define PutBytes(pdev, chunk, now, end, src, size, page_counter, alloc_size, use_sse)\
+    __PutBytesAlign(pdev, chunk, now, end, src, size, page_counter, alloc_size, 1, use_sse)
 #else
-    #define  PutBytesAlign(pdev, chunk, now, end, src, size, page_counter, alloc_size, alignment)\
-    __PutBytesAlign(pdev, chunk, now, end, src, size, NULL, alloc_size, alignment)
-    #define  PutBytes(pdev, chunk, now, end, src, size, page_counter, alloc_size)\
-    __PutBytesAlign(pdev, chunk, now, end, src, size, NULL, alloc_size, 1)
+#define  PutBytesAlign(pdev, chunk, now, end, src, size, page_counter, alloc_size, alignment, use_sse)\
+    __PutBytesAlign(pdev, chunk, now, end, src, size, NULL, alloc_size, alignment, use_sse)
+#define  PutBytes(pdev, chunk, now, end, src, size, page_counter, alloc_size, use_sse)\
+    __PutBytesAlign(pdev, chunk, now, end, src, size, NULL, alloc_size, 1, use_sse)
 #endif
 
 #define BITS_BUF_MAX (64 * 1024)
 
 static void __PutBytesAlign(PDev *pdev, QXLDataChunk **chunk_ptr, UINT8 **now_ptr,
                             UINT8 **end_ptr, UINT8 *src, int size, int *page_counter,
-                            size_t alloc_size, uint32_t alignment)
+                            size_t alloc_size, uint32_t alignment, BOOL use_sse)
 {
     QXLDataChunk *chunk = *chunk_ptr;
     UINT8 *now = *now_ptr;
     UINT8 *end = *end_ptr;
+    int offset;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     while (size) {
@@ -831,7 +1036,35 @@ static void __PutBytesAlign(PDev *pdev, QXLDataChunk **chunk_ptr, UINT8 **now_pt
             NEW_DATA_CHUNK(page_counter, aligned_size);
             cp_size = MIN(end - now, size);
         }
-        RtlCopyMemory(now, src, cp_size);
+
+        if (use_sse) {
+            offset = (size_t)now & SSE_MASK;
+            if (offset) {
+                offset = SSE_ALIGN - offset;
+                if (offset >= cp_size) {
+                    RtlCopyMemory(now, src, cp_size);
+                    src += cp_size;
+                    now += cp_size;
+                    chunk->data_size += cp_size;
+                    size -= cp_size;
+                    continue;
+                }
+                RtlCopyMemory(now, src,  offset);
+                now += offset;
+                src += offset;
+                size -= offset;
+                cp_size -= offset;
+                chunk->data_size += offset;
+            }
+    
+            if (((size_t)src & SSE_MASK) == 0) {
+                fast_memcpy_aligment(now, src, cp_size);
+            } else {
+                fast_memcpy_unaligment(now, src, cp_size);
+            }
+        } else {
+            RtlCopyMemory(now, src, cp_size);
+        }
         src += cp_size;
         now += cp_size;
         chunk->data_size += cp_size;
@@ -1270,6 +1503,36 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
 
+static _inline void RestoreFPU(PDev *pdev)
+{
+    void *align_addr =  (void *)ALIGN((size_t)(&pdev->FPUSave), SSE_ALIGN);
+
+    _asm
+    {
+        mov esi, align_addr
+
+        movdqa xmm0, [esi]
+        movdqa xmm1, [esi + 16]
+        movdqa xmm2, [esi + 32]
+        movdqa xmm3, [esi + 48]
+    }
+}
+
+static _inline void SaveFPU(PDev *pdev)
+{
+    void *align_addr =  (void *)ALIGN((size_t)(&pdev->FPUSave), SSE_ALIGN);
+
+    _asm
+    {
+        mov edi, align_addr
+    
+        movdqa [edi], xmm0
+        movdqa [edi + 16], xmm1
+        movdqa [edi + 32], xmm2
+        movdqa [edi + 48], xmm3
+    }
+}
+
 #define BITMAP_ALLOC_BASE (sizeof(Resource) + sizeof(InternalImage) + sizeof(QXLDataChunk))
 
 static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans,
@@ -1283,6 +1546,7 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     UINT8 *src_end;
     UINT8 *dest;
     UINT8 *dest_end;
+    BOOL use_sse = FALSE;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     ASSERT(pdev, width > 0 && height > 0);
@@ -1314,9 +1578,19 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     dest = chunk->data;
     dest_end = (UINT8 *)image_res + alloc_size;
     alloc_size = height * line_size;
+
+    if (have_sse2 && alloc_size >= 1024) {
+        use_sse = TRUE;
+        SaveFPU(pdev);
+    }
+
     for (; src != src_end; src -= surf->lDelta, alloc_size -= line_size) {
         PutBytesAlign(pdev, &chunk, &dest, &dest_end, src, line_size,
-                      &pdev->Res.num_bits_pages, alloc_size, line_size);
+                      &pdev->Res.num_bits_pages, alloc_size, line_size, TRUE);
+    }
+
+    if (use_sse) {
+        RestoreFPU(pdev);
     }
 
     GetPallette(pdev, &internal->image.bitmap, color_trans);
@@ -2357,7 +2631,7 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     src_end = src + (surf->lDelta * surf->sizlBitmap.cy);
     for (; src != src_end; src += surf->lDelta) {
         PutBytes(pdev, &info->chunk, &info->now, &info->end, src, line_size,
-                 &pdev->Res.num_cursor_pages, PAGE_SIZE);
+                 &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
     }
 
     CursorCacheAdd(pdev, internal);
@@ -2454,14 +2728,14 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
 
             if (pdev->bitmap_format == BMF_32BPP) {
                 PutBytes(pdev, &info.chunk, &info.now, &info.end, (UINT8 *)color_trans->pulXlate,
-                         256 << 2, &pdev->Res.num_cursor_pages, PAGE_SIZE);
+                         256 << 2, &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
             } else {
                 int i;
 
                 for (i = 0; i < 256; i++) {
                     UINT32 ent = _16bppTo32bpp(color_trans->pulXlate[i]);
                     PutBytes(pdev, &info.chunk, &info.now, &info.end, (UINT8 *)&ent,
-                             4, &pdev->Res.num_cursor_pages, PAGE_SIZE);
+                             4, &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
                 }
             }
             info.cursor->data_size += 256 << 2;
@@ -2474,14 +2748,14 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
 
             if (pdev->bitmap_format == BMF_32BPP) {
                 PutBytes(pdev, &info.chunk, &info.now, &info.end, (UINT8 *)color_trans->pulXlate,
-                         16 << 2, &pdev->Res.num_cursor_pages, PAGE_SIZE);
+                         16 << 2, &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
             } else {
                 int i;
 
                 for (i = 0; i < 16; i++) {
                     UINT32 ent = _16bppTo32bpp(color_trans->pulXlate[i]);
                     PutBytes(pdev, &info.chunk, &info.now, &info.end, (UINT8 *)&ent,
-                             4, &pdev->Res.num_cursor_pages, PAGE_SIZE);
+                             4, &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
                 }
             }
             info.cursor->data_size += 16 << 2;
@@ -2493,7 +2767,7 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
 
         for (; src != src_end; src += mask->lDelta) {
             PutBytes(pdev, &info.chunk, &info.now, &info.end, src, line_size,
-                     &pdev->Res.num_cursor_pages, PAGE_SIZE);
+                     &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
         }
     }
 
@@ -2613,4 +2887,21 @@ void ResDestroyGlobals()
     EngDeleteSemaphore(image_id_sem);
     image_id_sem = NULL;
 }
+
+void CheckAndSetSSE2()
+{
+    _asm
+    {
+        mov eax, 0x0000001
+        cpuid
+        and edx, 0x4000000
+        mov have_sse2, edx
+    }
+
+    if (have_sse2) {
+        have_sse2 = TRUE;
+    }
+}
+
+
 

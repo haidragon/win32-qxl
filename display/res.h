@@ -56,4 +56,5 @@ BOOL ResInit(PDev *pdev);
 void ResDestroy(PDev *pdev);
 void ResInitGlobals();
 void ResDestroyGlobals();
+void CheckAndSetSSE2();
 #endif

@@ -184,6 +184,9 @@ typedef struct DevRes {
 #endif
 } DevRes;
 
+#define SSE_MASK 15
+#define SSE_ALIGN 16
+
 typedef struct PDev {
     HANDLE driver;
     HDEV eng;
@@ -268,6 +271,8 @@ typedef struct PDev {
 
     Ring update_trace;
     UpdateTrace update_trace_items[NUM_UPDATE_TRACE_ITEMS];
+
+    UINT8 FPUSave[16 * 4 + 15];
 } PDev;
 
 

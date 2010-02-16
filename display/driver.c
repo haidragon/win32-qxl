@@ -240,6 +240,7 @@ BOOL DrvEnableDriver(ULONG engine_version, ULONG enable_data_size, PDRVENABLEDAT
     mspace_set_abort_func(mspace_abort);
     mspace_set_print_func(mspace_print);
     ResInitGlobals();
+    CheckAndSetSSE2();
     InitGlobalRes();
     DEBUG_PRINT((NULL, 1, "%s: end\n", __FUNCTION__));
     return TRUE;
