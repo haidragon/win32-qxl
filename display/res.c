@@ -890,7 +890,6 @@ static CacheImage *ImageCacheGetByKey(PDev *pdev, UINT32 key, BOOL check_rest,
     while (cache_image) {
         if (cache_image->key == key && (!check_rest || (cache_image->format == format &&
             cache_image->width == width && cache_image->height == height))) {
-            cache_image->hits++;
             return cache_image;
         }
         cache_image = cache_image->next;
@@ -1411,16 +1410,10 @@ static BOOL ChachSizeTest(PDev *pdev, SURFOBJ *surf)
     return ret;
 }
 
-
-static CacheImage *GetChachImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans, UINT32 *hash_key)
+static _inline UINT64 get_unique(SURFOBJ *surf, XLATEOBJ *color_trans)
 {
-    CacheImage *cache_image;
-    ULONG pallette_unique;
-    UINT64 gdi_unique;
     int pallette;
-    UINT32 key;
-    UINT8 format;
-    UINT32 line_size;
+    ULONG pallette_unique;
 
     pallette = color_trans && (color_trans->flXlate & XO_TABLE);
     pallette_unique = pallette ? color_trans->iUniq : 0;
@@ -1428,10 +1421,64 @@ static CacheImage *GetChachImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_tran
     // NOTE: GDI sometimes gives many instances of the exactly same SURFOBJ (hsurf & iUniq),
     // but with (fjBitmap & BMF_DONTCACHE). This opposed to what documented in the MSDN.
     if (!surf->iUniq || (surf->fjBitmap & BMF_DONTCACHE) || (pallette && !pallette_unique)) {
-        gdi_unique = 0;
+        return 0;
     } else {
-        gdi_unique = surf->iUniq | ((UINT64)pallette_unique << 32);
+        return (surf->iUniq | ((UINT64)pallette_unique << 32));
     }
+}
+
+BOOL CheckIfCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans)
+{
+    CacheImage *cache_image;
+    UINT64 gdi_unique;
+    UINT32 key;
+    UINT8 format;
+
+    gdi_unique = get_unique(surf, color_trans);
+
+    if (!ImageKeyGet(pdev, surf->hsurf, gdi_unique, &key)) {
+        return FALSE;
+    }
+
+    switch (surf->iBitmapFormat) {
+    case BMF_32BPP:
+        format = SPICE_BITMAP_FMT_32BIT;
+        break;
+    case BMF_24BPP:
+        format = SPICE_BITMAP_FMT_24BIT;
+        break;
+    case BMF_16BPP:
+        format = SPICE_BITMAP_FMT_16BIT;
+        break;
+    case BMF_8BPP:
+        format = SPICE_BITMAP_FMT_8BIT;
+        break;
+    case BMF_4BPP:
+        format = SPICE_BITMAP_FMT_4BIT_BE;
+        break;
+    case BMF_1BPP:
+        format = SPICE_BITMAP_FMT_1BIT_BE;
+    }
+
+
+    if ((cache_image = ImageCacheGetByKey(pdev, key, TRUE, format,
+                                          surf->sizlBitmap.cx,
+                                          surf->sizlBitmap.cy))) {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static CacheImage *GetChachImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans, UINT32 *hash_key)
+{
+    CacheImage *cache_image;
+    UINT64 gdi_unique;
+    UINT32 key;
+    UINT8 format;
+    UINT32 line_size;
+
+    gdi_unique = get_unique(surf, color_trans);
 
     if (!(line_size = GetFormatLineSize(surf->sizlBitmap.cx, surf->iBitmapFormat, &format))) {
         DEBUG_PRINT((pdev, 0, "%s: bitmap format err\n", __FUNCTION__));
@@ -1454,6 +1501,7 @@ static CacheImage *GetChachImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_tran
     if ((cache_image = ImageCacheGetByKey(pdev, key, TRUE, format,
                                           surf->sizlBitmap.cx,
                                           surf->sizlBitmap.cy))) {
+        cache_image->hits++;
         DEBUG_PRINT((pdev, 11, "%s: ImageCacheGetByKey %u hits %u\n", __FUNCTION__,
                      key, cache_image->hits));
         return cache_image;
@@ -1653,6 +1701,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
                                          surf->sizlBitmap.cx, surf->sizlBitmap.cy)) {
         DEBUG_PRINT((pdev, 11, "%s: ImageCacheGetByKey %u hits %u\n", __FUNCTION__,
                      key, cache_image->hits));
+        cache_image->hits++;
         if (internal = cache_image->image) {
             DEBUG_PRINT((pdev, 11, "%s: cached image found %u\n", __FUNCTION__, key));
             *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
@@ -1712,6 +1761,7 @@ BOOL QXLGetBitsFromCache(PDev *pdev, QXLDrawable *drawable, UINT32 hash_key, QXL
 
     if ((cache_image = ImageCacheGetByKey(pdev, hash_key, FALSE, 0, 0, 0)) &&
         (internal = cache_image->image)) {
+        cache_image->hits++;
         *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
         image_res = (Resource *)((UINT8 *)internal - sizeof(Resource));
         DrawableAddRes(pdev, drawable, image_res);

@@ -514,6 +514,96 @@ static BOOL StreamTest(PDev *pdev, SURFOBJ *src_surf, XLATEOBJ *color_trans, REC
     return TRUE;
 }
 
+static BOOL TestSplitClips(PDev *pdev, RECTL *src_rect, CLIPOBJ *clip, SURFOBJ *mask)
+{
+    UINT32 width;
+    UINT32 height;
+    UINT32 src_space;
+    UINT32 clip_space = 0;
+    int more;
+
+    if (!clip || mask) {
+        return FALSE;
+    }
+
+    width = src_rect->right - src_rect->left;
+    height = src_rect->bottom - src_rect->top;
+    src_space = width * height;
+
+    if (clip->iDComplexity == DC_RECT) {
+        width = clip->rclBounds.right - clip->rclBounds.left;
+        height = clip->rclBounds.bottom - clip->rclBounds.top;
+        clip_space = width * height;
+
+        if ((src_space / clip_space) > 1) {
+            return TRUE;
+        }
+        return FALSE;
+    }
+
+    if (clip->iMode == TC_RECTANGLES) {
+        CLIPOBJ_cEnumStart(clip, TRUE, CT_RECTANGLES, CD_RIGHTDOWN, 0);
+        do {
+            RECTL *now;
+            RECTL *end;
+
+            struct {
+                ULONG  count;
+                RECTL  rects[20];
+            } buf;
+
+            more = CLIPOBJ_bEnum(clip, sizeof(buf), (ULONG *)&buf);
+            for(now = buf.rects, end = now + buf.count; now < end; now++) {
+                width = now->right - now->left;
+                height = now->bottom - now->top;
+                clip_space += width * height;
+            }
+        } while (more);
+
+        if ((src_space / clip_space) > 1) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+static _inline BOOL DoPartialCopy(PDev *pdev, SURFOBJ *src, RECTL *src_rect, RECTL *area_rect,
+                                  RECTL *clip_rect, XLATEOBJ *color_trans, ULONG scale_mode,
+                                  UINT16 rop_decriptor)
+{
+    QXLDrawable *drawable;
+    RECTL clip_area;
+
+    SectRect(area_rect, clip_rect, &clip_area);
+    if (IsEmptyRect(&clip_area)) {
+        return TRUE;
+    }
+
+    if (!(drawable = Drawable(pdev, QXL_DRAW_COPY, &clip_area, NULL))) {
+        return FALSE;
+    }
+
+    drawable->effect = QXL_EFFECT_OPAQUE;
+    drawable->u.copy.scale_mode = GdiScaleModeToQxl(scale_mode);
+    drawable->u.copy.mask.bitmap = 0;
+    drawable->u.copy.rop_decriptor = rop_decriptor;
+
+    drawable->u.copy.src_area.top = src_rect->top + (clip_area.top - area_rect->top);
+    drawable->u.copy.src_area.bottom = drawable->u.copy.src_area.top + clip_area.bottom -
+                                       clip_area.top;
+    drawable->u.copy.src_area.left = src_rect->left + (clip_area.left - area_rect->left);
+    drawable->u.copy.src_area.right = drawable->u.copy.src_area.left + clip_area.right -
+                                      clip_area.left;
+
+    if(!GetBitmap(pdev, drawable, &drawable->u.copy.src_bitmap, src, &drawable->u.copy.src_area,
+                  color_trans, FALSE)) {
+        ReleaseOutput(pdev, drawable->release_info.id);
+        return FALSE;
+    }
+    PushDrawable(pdev, drawable);
+    return TRUE;
+}
+
 static BOOL DoCopy(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *src_rect,
                    XLATEOBJ *color_trans, UINT16 rop_decriptor, SURFOBJ *mask, POINTL *mask_pos,
                    BOOL invers_mask, ULONG scale_mode)
@@ -524,16 +614,52 @@ static BOOL DoCopy(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *
     ASSERT(pdev, pdev && area && src_rect && src);
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
 
+    if (mask) {
+        use_cache = TRUE;
+    } else {
+        use_cache = StreamTest(pdev, src, color_trans, src_rect, area);
+    }
+
+    if (use_cache && TestSplitClips(pdev, src_rect, clip, mask) &&
+        !CheckIfCacheImage(pdev, src, color_trans)) {
+
+        if (clip->iDComplexity == DC_RECT) {
+            if (!DoPartialCopy(pdev, src, src_rect, area, &clip->rclBounds, color_trans, scale_mode,
+                               rop_decriptor)) {
+                return FALSE;
+            }
+        } else {
+            int more;
+            ASSERT(pdev, clip->iMode == TC_RECTANGLES);
+            CLIPOBJ_cEnumStart(clip, TRUE, CT_RECTANGLES, CD_RIGHTDOWN, 0);
+            do {
+                RECTL *now;
+                RECTL *end;
+
+                struct {
+                    ULONG  count;
+                    RECTL  rects[20];
+                } buf;
+                more = CLIPOBJ_bEnum(clip, sizeof(buf), (ULONG *)&buf);
+                for(now = buf.rects, end = now + buf.count; now < end; now++) {
+                    if (!DoPartialCopy(pdev, src, src_rect, area, now, color_trans, scale_mode,
+                                       rop_decriptor)) {
+                        return FALSE;
+                    }
+                }
+            } while (more);
+        }
+        return TRUE;
+    }
+
     if (!(drawable = Drawable(pdev, QXL_DRAW_COPY, area, clip))) {
         return FALSE;
     }
 
     if (mask) {
         drawable->effect = QXL_EFFECT_BLEND;
-        use_cache = TRUE;
     } else {
         drawable->effect = QXL_EFFECT_OPAQUE;
-        use_cache = StreamTest(pdev, src, color_trans, src_rect, area);
     }
 
     drawable->u.copy.scale_mode = GdiScaleModeToQxl(scale_mode);
