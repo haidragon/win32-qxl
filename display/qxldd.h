@@ -133,6 +133,7 @@ typedef struct UpdateTrace {
     UINT32 last_time;
     RECTL area;
     HSURF hsurf;
+    UINT8 count;
 } UpdateTrace;
 
 typedef struct PMemSlot {

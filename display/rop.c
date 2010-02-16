@@ -484,11 +484,17 @@ static BOOL StreamTest(PDev *pdev, SURFOBJ *src_surf, XLATEOBJ *color_trans, REC
             BOOL ret;
 
             if (now != trace->last_time && now - trace->last_time < 1000 / 5) {
-                ret = FALSE;
                 trace->last_time = now - 1; // asumong mm clock is active so delta t == 0 is
                                             // imposibole. frocing delata t to be at least 1.
+                if (trace->count < 20) {
+                    trace->count++;
+                    ret = TRUE;
+                } else {
+                    ret = FALSE;
+                }
             } else {
                 trace->last_time = now;
+                trace->count = 0;
                 ret = TRUE;
             }
             RingRemove(pdev, (RingItem *)trace);
@@ -509,6 +515,7 @@ static BOOL StreamTest(PDev *pdev, SURFOBJ *src_surf, XLATEOBJ *color_trans, REC
     } else {
         trace->hsurf = NULL;
     }
+    trace->count = 0;
     RingAdd(pdev, ring, (RingItem *)trace);
 
     return TRUE;
