@@ -13,7 +13,7 @@ typedef struct DrawArea {
 BOOL CreateDrawArea(PDev *pdev, DrawArea *drawarea, UINT8 *base_mem, UINT32 cx, UINT32 cy);
 VOID FreeDrawArea(DrawArea *drawarea);
 
-HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, PHYSICAL *phys_mem,
+HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *phys_mem,
                            UINT8 **base_mem, UINT8 allocation_type);
 VOID DeleteDeviceBitmap(HSURF surf);
 

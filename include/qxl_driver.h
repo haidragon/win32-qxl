@@ -18,7 +18,7 @@
 #ifndef _H_QXL_DRIVER
 #define _H_QXL_DRIVER
 
-#include "qxl_dev.h"
+#include <spice\qxl_dev.h>
 
 #if (WINVER < 0x0501)
 #include "wdmhelper.h"
@@ -65,7 +65,7 @@ typedef struct QXLDriverInfo {
     UINT32 *compression_level;
 
     UINT32 update_area_port;
-    Rect *update_area;
+    SpiceRect *update_area;
 
     UINT32 *mm_clock;
 

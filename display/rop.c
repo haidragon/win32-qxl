@@ -37,26 +37,30 @@ enum ROP3type {
 
 
 ROP3Info rops2[] = {
-    {QXL_EFFECT_OPAQUE, 0, ROP3_TYPE_BLACKNESS, ROPD_OP_BLACKNESS},                           //0
-    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_OR | ROPD_INVERS_RES}, //DPon
+    {QXL_EFFECT_OPAQUE, 0, ROP3_TYPE_BLACKNESS, SPICE_ROPD_OP_BLACKNESS},                     //0
+    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_OR |
+                                                               SPICE_ROPD_INVERS_RES},        //DPon
     {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL,
-                                               ROPD_INVERS_BRUSH | ROPD_OP_AND},              //DPna
-    {QXL_EFFECT_OPAQUE, ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_INVERS_BRUSH | ROPD_OP_PUT},         //Pn
+                                               SPICE_ROPD_INVERS_BRUSH | SPICE_ROPD_OP_AND},  //DPna
+    {QXL_EFFECT_OPAQUE, ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_INVERS_BRUSH |
+                                                    SPICE_ROPD_OP_PUT},                       //Pn
     {QXL_EFFECT_BLACKNESS_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL,
-                                                            ROPD_INVERS_DEST | ROPD_OP_AND},  //PDna
-    {QXL_EFFECT_REVERT_ON_DUP, ROP3_DEST, ROP3_TYPE_INVERS, ROPD_OP_INVERS},                  //Dn
-    {QXL_EFFECT_REVERT_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_XOR},          //DPx
+                                              SPICE_ROPD_INVERS_DEST | SPICE_ROPD_OP_AND},    //PDna
+    {QXL_EFFECT_REVERT_ON_DUP, ROP3_DEST, ROP3_TYPE_INVERS, SPICE_ROPD_OP_INVERS},            //Dn
+    {QXL_EFFECT_REVERT_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_XOR},    //DPx
     {QXL_EFFECT_BLACKNESS_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL,
-                                                     ROPD_OP_AND | ROPD_INVERS_RES},          //DPan
-    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_AND},             //DPa
-    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_XOR | ROPD_INVERS_RES},//DPxn
+                                              SPICE_ROPD_OP_AND | SPICE_ROPD_INVERS_RES},     //DPan
+    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_AND},       //DPa
+    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_XOR |
+                                               SPICE_ROPD_INVERS_RES},                        //DPxn
     {QXL_EFFECT_NOP, ROP3_DEST, ROP3_TYPE_NOP, 0},                                            //D
     {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL,
-                                            ROPD_INVERS_BRUSH | ROPD_OP_OR},                  //DPno
-    {QXL_EFFECT_OPAQUE, ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_PUT},                             //P
-    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_INVERS_DEST | ROPD_OP_OR},//PDno
-    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_OR},              //DPo
-    {QXL_EFFECT_OPAQUE, 0, ROP3_TYPE_WHITENESS, ROPD_OP_WHITENESS},                           //1
+                                            SPICE_ROPD_INVERS_BRUSH | SPICE_ROPD_OP_OR},      //DPno
+    {QXL_EFFECT_OPAQUE, ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_PUT},                       //P
+    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_INVERS_DEST |
+                                               SPICE_ROPD_OP_OR},                             //PDno
+    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_OR},        //DPo
+    {QXL_EFFECT_OPAQUE, 0, ROP3_TYPE_WHITENESS, SPICE_ROPD_OP_WHITENESS},                     //1
 };
 
 
@@ -68,27 +72,32 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x01},                             //DPSoon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x02},                             //DPSona
                                                                                     //PSon
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_OP_OR | ROPD_INVERS_RES},
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, SPICE_ROPD_OP_OR |
+                                               SPICE_ROPD_INVERS_RES},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x04},                             //SDPona
                                                                                     //DPon
-    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_OR | ROPD_INVERS_RES},
+    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_OR |
+                                               SPICE_ROPD_INVERS_RES},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x06},                             //PDSxnon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x07},                             //PDSaon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x08},                             //SDPnaa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x09},                             //PDSxon
                                                                                     //DPna
     {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL,
-                                                                   ROPD_INVERS_BRUSH | ROPD_OP_AND},
+                                                                   SPICE_ROPD_INVERS_BRUSH |
+                                                                   SPICE_ROPD_OP_AND},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x0b},                             //PSDnaon
                                                                                     //SPna
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_INVERS_BRUSH | ROPD_OP_AND },
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, SPICE_ROPD_INVERS_BRUSH |
+                                                                 SPICE_ROPD_OP_AND },
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x0d},                             //PDSnaon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x0e},                             //PDSonon
                                                                                     //Pn
-    {QXL_EFFECT_OPAQUE, ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_INVERS_BRUSH | ROPD_OP_PUT},
+    {QXL_EFFECT_OPAQUE, ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_INVERS_BRUSH | SPICE_ROPD_OP_PUT},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x10},                             //PDSona
                                                                                     //DSon
-    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_OP_OR | ROPD_INVERS_RES},
+    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, SPICE_ROPD_OP_OR |
+                                             SPICE_ROPD_INVERS_RES},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x12},                             //SDPxnon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x13},                             //SDPaon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x14},                             //DPSxnon
@@ -106,7 +115,8 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x20},                             //DPSnaa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x21},                             //SDPxon
                                                                                     //DSna
-    {QXL_EFFECT_NOP_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_INVERS_SRC | ROPD_OP_AND},
+    {QXL_EFFECT_NOP_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, SPICE_ROPD_INVERS_SRC |
+                                                                   SPICE_ROPD_OP_AND},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x23},                             //SPDnaon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x24},                             //SPxDSxa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x25},                             //PDSPanaxn
@@ -121,10 +131,12 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x2e},                             //PSDPxox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x2f},                             //PSDnoan
                                                                                     //PSna
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_INVERS_SRC | ROPD_OP_AND},
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, SPICE_ROPD_INVERS_SRC |
+                                                                 SPICE_ROPD_OP_AND},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x31},                             //SDPnaon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x32},                             //SDPSoox
-    {QXL_EFFECT_OPAQUE, ROP3_SRC, ROP3_TYPE_COPY, ROPD_INVERS_SRC | ROPD_OP_PUT},   //Sn
+    {QXL_EFFECT_OPAQUE, ROP3_SRC, ROP3_TYPE_COPY, SPICE_ROPD_INVERS_SRC |
+                                                  SPICE_ROPD_OP_PUT},               //Sn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x34},                             //SPDSaox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x35},                             //SPDSxnox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x36},                             //SDPox
@@ -133,17 +145,19 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x39},                             //SPDnox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x3a},                             //SPDSxox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x3b},                             //SPDnoan
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_OP_XOR},      //PSx
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, SPICE_ROPD_OP_XOR},//PSx
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x3d},                             //SPDSonox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x3e},                             //SPDSnaox
                                                                                     //PSan
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_OP_AND | ROPD_INVERS_RES},
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, SPICE_ROPD_OP_AND |
+                                                                 SPICE_ROPD_INVERS_RES},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x40},                             //PSDnaa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x41},                             //DPSxon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x42},                             //SDxPDxa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x43},                             //SPDSanaxn
                                                                                     //SDna
-    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_INVERS_DEST | ROPD_OP_AND},
+    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, SPICE_ROPD_INVERS_DEST |
+                                                              SPICE_ROPD_OP_AND},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x45},                             //DPSnaon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x46},                             //DSPDaox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x47},                             //PSDPxaxn
@@ -156,7 +170,8 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x4e},                             //PDSPxox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x4f},                             //PDSnoan
                                                                                     //PDna
-    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_INVERS_DEST | ROPD_OP_AND},
+    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_INVERS_DEST |
+                                                               SPICE_ROPD_OP_AND},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x51},                             //DSPnaon
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x52},                             //DPSDaox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x53},                             //SPDSxaxn
@@ -166,20 +181,23 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x57},                             //DPSoan
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x58},                             //PDSPoax
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x59},                             //DPSnox
-    {QXL_EFFECT_REVERT_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_XOR},//DPx
+    {QXL_EFFECT_REVERT_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_XOR},
+                                                                                    //DPx
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x5b},                             //DPSDonox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x5c},                             //DPSDxox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x5d},                             //DPSnoan
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x5e},                             //DPSDnaox
                                                                                     //DPan
-    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_AND | ROPD_INVERS_RES},
+    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_AND |
+                                                               SPICE_ROPD_INVERS_RES},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x60},                             //PDSxa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x61},                             //DSPDSaoxxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x62},                             //DSPDoax
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x63},                             //SDPnox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x64},                             //SDPSoax
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x65},                             //DSPnox
-    {QXL_EFFECT_REVERT_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_OP_XOR}, //DSx
+    {QXL_EFFECT_REVERT_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND,
+                                                     SPICE_ROPD_OP_XOR},            //DSx
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x67},                             //SDPSonox
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x68},                             //DSPDSonoxxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x69},                             //PDSxxn
@@ -197,7 +215,8 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x75},                             //DSPnoan
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x76},                             //SDPSnaox
                                                                                     //DSan
-    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_OP_AND | ROPD_INVERS_RES},
+    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, SPICE_ROPD_OP_AND |
+                                                              SPICE_ROPD_INVERS_RES},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x78},                             //PDSax
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x79},                             //DSPDSoaxxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x7a},                             //DPSDnoax
@@ -214,7 +233,8 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x85},                             //PDSPnoaxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x86},                             //DSPDSoaxx
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x87},                             //PDSaxn
-    {QXL_EFFECT_NOP_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_OP_AND},    //DSa
+    {QXL_EFFECT_NOP_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND,
+                                                  SPICE_ROPD_OP_AND},               //DSa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x89},                             //SDPSnaoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x8a},                             //DSPnoa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x8b},                             //DSPDxoxn
@@ -232,20 +252,23 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x97},                             //PSDPSonoxx
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x98},                             //SDPSonoxn
                                                                                     //DSxn
-    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_OP_XOR | ROPD_INVERS_RES},
+    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, SPICE_ROPD_OP_XOR |
+                                                              SPICE_ROPD_INVERS_RES},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x9a},                             //DPSnax
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x9b},                             //SDPSoaxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x9c},                             //SPDnax
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x9d},                             //DSPDoaxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x9e},                             //DSPDSaoxx
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0x9f},                             //PDSxan
-    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_AND},   //DPa
+    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL,
+                                                    SPICE_ROPD_OP_AND},             //DPa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xa1},                             //PDSPnaoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xa2},                             //DPSnoa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xa3},                             //DPSDxoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xa4},                             //PDSPonoxn
                                                                                     //PDxn
-    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_XOR | ROPD_INVERS_RES},
+    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_XOR |
+                                                               SPICE_ROPD_INVERS_RES},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xa6},                             //DSPnax
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xa7},                             //PDSPoaxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xa8},                             //DPSoa
@@ -256,7 +279,8 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xad},                             //DPSDaoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xae},                             //DSPnao
                                                                                     //DPno
-    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_INVERS_BRUSH | ROPD_OP_OR},
+    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL,
+                                                    SPICE_ROPD_INVERS_BRUSH | SPICE_ROPD_OP_OR},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xb0},                             //PDSnoa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xb1},                             //PDSPxoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xb2},                             //SSPxDSxox
@@ -269,16 +293,18 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xb9},                             //DSPDaoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xba},                             //DPSnao
                                                                                     //DSno
-    {QXL_EFFECT_NOP_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_INVERS_SRC | ROPD_OP_OR},
+    {QXL_EFFECT_NOP_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND,
+                                                       SPICE_ROPD_INVERS_SRC | SPICE_ROPD_OP_OR},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xbc},                             //SPDSanax
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xbd},                             //SDxPDxan
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xbe},                             //DPSxo
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xbf},                             //DPSano
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_OP_AND},      //PSa
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, SPICE_ROPD_OP_AND},//PSa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xc1},                             //SPDSnaoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xc2},                             //SPDSonoxn
                                                                                     //PSxn
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_OP_XOR | ROPD_INVERS_RES},
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, SPICE_ROPD_OP_XOR |
+                                                                 SPICE_ROPD_INVERS_RES},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xc4},                             //SPDnoa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xc5},                             //SPDSxoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xc6},                             //SDPnax
@@ -287,11 +313,13 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xc9},                             //SPDoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xca},                             //DPSDxax
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xcb},                             //SPDSaoxn
-    {QXL_EFFECT_OPAQUE, ROP3_SRC, ROP3_TYPE_COPY, ROPD_OP_PUT},                     //S
+    {QXL_EFFECT_OPAQUE, ROP3_SRC, ROP3_TYPE_COPY, SPICE_ROPD_OP_PUT},                     //S
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xcd},                             //SDPono
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xce},                             //SDPnao
                                                                                     //SPno
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_INVERS_BRUSH | ROPD_OP_OR},
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE,
+                                               SPICE_ROPD_INVERS_BRUSH |
+                                               SPICE_ROPD_OP_OR},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xd0},                             //PSDnoa
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xd1},                             //PSDPxoxn
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xd2},                             //PDSnax
@@ -306,7 +334,9 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xdb},                             //SPxDSxan
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xdc},                             //SPDnao
                                                                                     //SDno
-    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_INVERS_DEST | ROPD_OP_OR},
+    {QXL_EFFECT_BLEND, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND,
+                                             SPICE_ROPD_INVERS_DEST |
+                                             SPICE_ROPD_OP_OR},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xde},                             //SDPxo
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xdf},                             //SDPano
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xe0},                             //PDSoa
@@ -323,23 +353,29 @@ ROP3Info rops3[] = {
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xeb},                             //DPSxno
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xec},                             //SDPao
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xed},                             //SDPxno
-    {QXL_EFFECT_NOP_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND, ROPD_OP_OR},     //DSo
+    {QXL_EFFECT_NOP_ON_DUP, ROP3_SRC | ROP3_DEST, ROP3_TYPE_BLEND,
+                                                  SPICE_ROPD_OP_OR},                //DSo
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xef},                             //SDPnoo
-    {QXL_EFFECT_OPAQUE, ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_PUT},                   //P
+    {QXL_EFFECT_OPAQUE, ROP3_BRUSH, ROP3_TYPE_FILL, SPICE_ROPD_OP_PUT},                   //P
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xf1},                             //PDSono
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xf2},                             //PDSnao
                                                                                     //PSno
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_INVERS_SRC | ROPD_OP_OR},
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE,
+                                               SPICE_ROPD_INVERS_SRC |
+                                               SPICE_ROPD_OP_OR},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xf4},                             //PSDnao
                                                                                     //PDno
-    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_INVERS_DEST | ROPD_OP_OR},
+    {QXL_EFFECT_BLEND, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL,
+                                               SPICE_ROPD_INVERS_DEST |
+                                               SPICE_ROPD_OP_OR},
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xf6},                             //PDSxo
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xf7},                             //PDSano
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xf8},                             //PDSao
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xf9},                             //PDSxno
-    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL, ROPD_OP_OR},    //DPo
+    {QXL_EFFECT_NOP_ON_DUP, ROP3_DEST | ROP3_BRUSH, ROP3_TYPE_FILL,
+                                                    SPICE_ROPD_OP_OR},              //DPo
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xfb},                             //DPSnoo
-    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, ROPD_OP_OR},       //PSo
+    {QXL_EFFECT_OPAQUE, ROP3_SRC | ROP3_BRUSH, ROP3_TYPE_OPAQUE, SPICE_ROPD_OP_OR}, //PSo
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xfd},                             //PSDnoo
     {QXL_EFFECT_BLEND, ROP3_ALL, ROP3_TYPE_ROP3, 0xfe},                             //DPSoo
     {QXL_EFFECT_OPAQUE, 0, ROP3_TYPE_WHITENESS, 1},                                 //1
@@ -373,8 +409,8 @@ static BOOL DoFill(PDev *pdev, RECTL *area, CLIPOBJ *clip, BRUSHOBJ *brush, POIN
     return TRUE;
 }
 
-static BOOL GetBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *bitmap_phys, SURFOBJ *surf,
-                      Rect *area, XLATEOBJ *color_trans, BOOL use_cache)
+static BOOL GetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *bitmap_phys, SURFOBJ *surf,
+                      SpiceRect *area, XLATEOBJ *color_trans, BOOL use_cache)
 {
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
     if (surf->iType != STYPE_BITMAP) {
@@ -395,7 +431,8 @@ static BOOL GetBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *bitmap_phys, 
 
 static _inline UINT8 GdiScaleModeToQxl(ULONG scale_mode)
 {
-    return (scale_mode == HALFTONE) ? IMAGE_SCALE_INTERPOLATE : IMAGE_SCALE_NEAREST;
+    return (scale_mode == HALFTONE) ? SPICE_IMAGE_SCALE_MODE_INTERPOLATE :
+                                      SPICE_IMAGE_SCALE_MODE_NEAREST;
 }
 
 static BOOL DoOpaque(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *src_rect,

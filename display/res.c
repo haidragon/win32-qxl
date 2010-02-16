@@ -29,14 +29,14 @@
 #define WAIT_FOR_EVENT(pdev, event, timeout) EngWaitForSingleObject(event, timeout)
 #endif
 
-static _inline PHYSICAL PA(PDev *pdev, PVOID virt, UINT8 slot_id)
+static _inline QXLPHYSICAL PA(PDev *pdev, PVOID virt, UINT8 slot_id)
 {
     PMemSlot *p_slot = &pdev->mem_slots[slot_id];
 
     return p_slot->high_bits | ((UINT64)virt - p_slot->slot.start_virt_addr);
 }
 
-static _inline UINT64 VA(PDev *pdev, PHYSICAL paddr, UINT8 slot_id)
+static _inline UINT64 VA(PDev *pdev, QXLPHYSICAL paddr, UINT8 slot_id)
 {
     UINT64 virt;
     PMemSlot *p_slot = &pdev->mem_slots[slot_id];
@@ -67,7 +67,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable);
 
 #define PUSH_CMD(pdev) do {                             \
     int notify;                                         \
-    RING_PUSH(pdev->cmd_ring, notify);                  \
+    SPICE_RING_PUSH(pdev->cmd_ring, notify);            \
     if (notify) {                                       \
         WRITE_PORT_UCHAR(pdev->notify_cmd_port, 0);     \
     }                                                   \
@@ -75,7 +75,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable);
 
 #define PUSH_CURSOR_CMD(pdev) do {                      \
     int notify;                                         \
-    RING_PUSH(pdev->cursor_ring, notify);               \
+    SPICE_RING_PUSH(pdev->cursor_ring, notify);         \
     if (notify) {                                       \
         WRITE_PORT_UCHAR(pdev->notify_cursor_port, 0);  \
     }                                                   \
@@ -143,7 +143,7 @@ static void WaitForCursorRing(PDev* pdev)
     DEBUG_PRINT((pdev, 9, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
     for (;;) {
-        RING_PROD_WAIT(pdev->cursor_ring, wait);
+        SPICE_RING_PROD_WAIT(pdev->cursor_ring, wait);
 
         if (!wait) {
             break;
@@ -158,7 +158,7 @@ static void WaitForCursorRing(PDev* pdev)
             EngWaitForSingleObject(pdev->cursor_event, &timeout);
 #endif // (WINVER < 0x0501)
 
-            if (RING_IS_FULL(pdev->cursor_ring)) {
+            if (SPICE_RING_IS_FULL(pdev->cursor_ring)) {
                 DEBUG_PRINT((pdev, 0, "%s: 0x%lx: timeout\n", __FUNCTION__, pdev));
             }
         }
@@ -179,7 +179,7 @@ static void WaitForCmdRing(PDev* pdev)
     DEBUG_PRINT((pdev, 9, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
     for (;;) {
-        RING_PROD_WAIT(pdev->cmd_ring, wait);
+        SPICE_RING_PROD_WAIT(pdev->cmd_ring, wait);
 
         if (!wait) {
             break;
@@ -194,7 +194,7 @@ static void WaitForCmdRing(PDev* pdev)
             EngWaitForSingleObject(pdev->display_event, &timeout);
 #endif // (WINVER < 0x0501)
 
-            if (RING_IS_FULL(pdev->cmd_ring)) {
+            if (SPICE_RING_IS_FULL(pdev->cmd_ring)) {
                 DEBUG_PRINT((pdev, 0, "%s: 0x%lx: timeout\n", __FUNCTION__, pdev));
             }
         }
@@ -227,14 +227,14 @@ static void WaitForReleaseRing(PDev* pdev)
     for (;;) {
         LARGE_INTEGER timeout;
 
-        if (RING_IS_EMPTY(pdev->release_ring)) {
+        if (SPICE_RING_IS_EMPTY(pdev->release_ring)) {
             QXLSleep(pdev, 10);
-            if (!RING_IS_EMPTY(pdev->release_ring)) {
+            if (!SPICE_RING_IS_EMPTY(pdev->release_ring)) {
                 break;
             }
             WRITE_PORT_UCHAR(pdev->notify_oom_port, 0);
         }
-        RING_CONS_WAIT(pdev->release_ring, wait);
+        SPICE_RING_CONS_WAIT(pdev->release_ring, wait);
 
         if (!wait) {
             break;
@@ -243,7 +243,7 @@ static void WaitForReleaseRing(PDev* pdev)
         timeout.QuadPart = -30 * 1000 * 10; //30ms
         WAIT_FOR_EVENT(pdev, pdev->display_event, &timeout);
 
-        if (RING_IS_EMPTY(pdev->release_ring)) {
+        if (SPICE_RING_IS_EMPTY(pdev->release_ring)) {
 #ifdef DBG
             DEBUG_PRINT((pdev, 0, "%s: 0x%lx: timeout\n", __FUNCTION__, pdev));
             DEBUG_PRINT((pdev, 0, "\tfree %d out %d path %d rect %d bits %d\n",
@@ -278,8 +278,8 @@ static void *AllocMem(PDev* pdev, size_t size)
             continue;
         }
         WaitForReleaseRing(pdev);
-        pdev->Res.free_outputs = *RING_CONS_ITEM(pdev->release_ring);
-        RING_POP(pdev->release_ring, notify);
+        pdev->Res.free_outputs = *SPICE_RING_CONS_ITEM(pdev->release_ring);
+        SPICE_RING_POP(pdev->release_ring, notify);
     }
     EngReleaseSemaphore(pdev->malloc_sem);
     ASSERT(pdev, ptr >= pdev->Res.mspace_start && ptr < pdev->Res.mspace_end);
@@ -481,14 +481,14 @@ void PushDrawable(PDev *pdev, QXLDrawable *drawable)
     QXLCommand *cmd;
 
     WaitForCmdRing(pdev);
-    cmd = RING_PROD_ITEM(pdev->cmd_ring);
+    cmd = SPICE_RING_PROD_ITEM(pdev->cmd_ring);
     cmd->type = QXL_CMD_DRAW;
     cmd->data = PA(pdev, drawable, pdev->main_mem_slot);
     PUSH_CMD(pdev);
 }
 
 _inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT8 **base_mem,
-                              PHYSICAL *phys_mem, UINT8 allocation_type)
+                              QXLPHYSICAL *phys_mem, UINT8 allocation_type)
 {
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
@@ -499,7 +499,7 @@ _inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT
     *phys_mem = PA(pdev, *base_mem, pdev->main_mem_slot);
 }
 
-BOOL QXLGetSurface(PDev *pdev, PHYSICAL *surface_phys, UINT32 x, UINT32 y, UINT32 depth,
+BOOL QXLGetSurface(PDev *pdev, QXLPHYSICAL *surface_phys, UINT32 x, UINT32 y, UINT32 depth,
                    UINT8 **base_mem, UINT8 allocation_type) {
     ASSERT(pdev, allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_SURF0);
     GetSurfaceMemory(pdev, x, y, depth, base_mem, surface_phys, allocation_type);
@@ -508,7 +508,7 @@ BOOL QXLGetSurface(PDev *pdev, PHYSICAL *surface_phys, UINT32 x, UINT32 y, UINT3
 
 static void FreePath(PDev *pdev, Resource *res)
 {
-    PHYSICAL chunk_phys;
+    QXLPHYSICAL chunk_phys;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
@@ -546,7 +546,7 @@ static void FreePath(PDev *pdev, Resource *res)
 
 #define PATH_PREALLOC_PONTS 20
 #define PATH_MAX_ALLOC_PONTS 128
-#define PATH_ALLOC_SIZE (sizeof(Resource) + sizeof(QXLPath) + sizeof(PathSeg) +\
+#define PATH_ALLOC_SIZE (sizeof(Resource) + sizeof(QXLPath) + sizeof(SpicePathSeg) +\
                          sizeof(POINTFIX) * PATH_PREALLOC_PONTS)
 
 
@@ -565,19 +565,19 @@ static void __GetPathCommon(PDev *pdev, PATHOBJ *path, QXLDataChunk **chunk_ptr,
     do {
         int pt_buf_size;
         UINT8 *pt_buf;
-        PathSeg *seg;
+        SpicePathSeg *seg;
 
         more = PATHOBJ_bEnum(path, &data);
         if (data.count == 0) {
             break;
         }
 
-        if (end - now < sizeof(PathSeg)) {
+        if (end - now < sizeof(SpicePathSeg)) {
             size_t alloc_size = MIN(data.count << 3, sizeof(POINTFIX) * PATH_MAX_ALLOC_PONTS);
-            alloc_size += sizeof(PathSeg);
+            alloc_size += sizeof(SpicePathSeg);
             NEW_DATA_CHUNK(page_counter, alloc_size);
         }
-        seg = (PathSeg*)now;
+        seg = (SpicePathSeg*)now;
         seg->flags = data.flags;
         seg->count = data.count;
         now = seg->data;
@@ -644,7 +644,7 @@ static Resource *__GetPath(PDev *pdev, PATHOBJ *path)
     return res;
 }
 
-BOOL QXLGetPath(PDev *pdev, QXLDrawable *drawable, PHYSICAL *path_phys, PATHOBJ *path)
+BOOL QXLGetPath(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *path_phys, PATHOBJ *path)
 {
     Resource *path_res;
     ASSERT(pdev, pdev && drawable && path_phys && path);
@@ -661,7 +661,7 @@ BOOL QXLGetPath(PDev *pdev, QXLDrawable *drawable, PHYSICAL *path_phys, PATHOBJ 
 
 static void FreeClipRects(PDev *pdev, Resource *res)
 {
-    PHYSICAL chunk_phys;
+    QXLPHYSICAL chunk_phys;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
@@ -681,17 +681,17 @@ static void FreeClipRects(PDev *pdev, Resource *res)
 
 #define RECTS_NUM_PREALLOC 8
 #define RECTS_ALLOC_SIZE (sizeof(Resource) + sizeof(QXLClipRects) + \
-                          sizeof(Rect) * RECTS_NUM_PREALLOC)
+                          sizeof(SpiceRect) * RECTS_NUM_PREALLOC)
 #define RECTS_NUM_ALLOC 20
-#define RECTS_CHUNK_ALLOC_SIZE (sizeof(QXLDataChunk) + sizeof(Rect) * RECTS_NUM_ALLOC)
+#define RECTS_CHUNK_ALLOC_SIZE (sizeof(QXLDataChunk) + sizeof(SpiceRect) * RECTS_NUM_ALLOC)
 
 static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
 {
     Resource *res;
     QXLClipRects *rects;
     QXLDataChunk *chunk;
-    Rect *dest;
-    Rect *dest_end;
+    SpiceRect *dest;
+    SpiceRect *dest_end;
     int more;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
@@ -707,7 +707,7 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
     chunk->prev_chunk = 0;
     chunk->next_chunk = 0;
 
-    dest = (Rect *)chunk->data;
+    dest = (SpiceRect *)chunk->data;
     dest_end = dest + ((RECTS_ALLOC_SIZE - sizeof(Resource) - sizeof(QXLClipRects)) >> 4);
 
     CLIPOBJ_cEnumStart(clip, TRUE, CT_RECTANGLES, CD_RIGHTDOWN, 0);
@@ -730,11 +730,11 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
                 chunk = (QXLDataChunk *)page;
                 chunk->data_size = 0;
                 chunk->next_chunk = 0;
-                dest = (Rect *)chunk->data;
+                dest = (SpiceRect *)chunk->data;
                 dest_end = dest + RECTS_NUM_ALLOC;
             }
             CopyRect(dest, now);
-            chunk->data_size += sizeof(Rect);
+            chunk->data_size += sizeof(SpiceRect);
         }
     } while (more);
     DEBUG_PRINT((pdev, 13, "%s: done, num_rects %d\n", __FUNCTION__, rects->num_rects));
@@ -748,7 +748,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
 
     if (clip == NULL) {
-        drawable->clip.type = CLIP_TYPE_NONE;
+        drawable->clip.type = SPICE_CLIP_TYPE_NONE;
         DEBUG_PRINT((pdev, 10, "%s: QXL_CLIP_TYPE_NONE\n", __FUNCTION__));
         return TRUE;
     }
@@ -756,15 +756,15 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
     if (clip->iDComplexity == DC_RECT) {
         QXLClipRects *rects;
         rects_res = (Resource *)AllocMem(pdev, sizeof(Resource) + sizeof(QXLClipRects) +
-                                         sizeof(Rect));
+                                         sizeof(SpiceRect));
         rects_res->refs = 1;
         rects_res->free = FreeClipRects;
         rects = (QXLClipRects *)rects_res->res;
         rects->num_rects = 1;
-        rects->chunk.data_size = sizeof(Rect);
+        rects->chunk.data_size = sizeof(SpiceRect);
         rects->chunk.prev_chunk = 0;
         rects->chunk.next_chunk = 0;
-        CopyRect((Rect *)rects->chunk.data, &clip->rclBounds);
+        CopyRect((SpiceRect *)rects->chunk.data, &clip->rclBounds);
     } else {
 
         ASSERT(pdev, clip->iDComplexity == DC_COMPLEX);
@@ -780,7 +780,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
             EngDeletePath(path);
             DrawableAddRes(pdev, drawable, path_res);
             RELEASE_RES(pdev, path_res);
-            drawable->clip.type = CLIP_TYPE_PATH;
+            drawable->clip.type = SPICE_CLIP_TYPE_PATH;
             drawable->clip.data = PA(pdev, path_res->res, pdev->main_mem_slot);
             DEBUG_PRINT((pdev, 10, "%s: done\n", __FUNCTION__));
             return TRUE;
@@ -792,7 +792,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
 
     DrawableAddRes(pdev, drawable, rects_res);
     RELEASE_RES(pdev, rects_res);
-    drawable->clip.type = CLIP_TYPE_RECTS;
+    drawable->clip.type = SPICE_CLIP_TYPE_RECTS;
     drawable->clip.data = PA(pdev, rects_res->res, pdev->main_mem_slot);
     DEBUG_PRINT((pdev, 10, "%s: done\n", __FUNCTION__));
     return TRUE;
@@ -933,8 +933,8 @@ static CacheImage *AllocCacheImage(PDev* pdev)
             continue;
         }
         WaitForReleaseRing(pdev);
-        pdev->Res.free_outputs = *RING_CONS_ITEM(pdev->release_ring);
-        RING_POP(pdev->release_ring, notify);
+        pdev->Res.free_outputs = *SPICE_RING_CONS_ITEM(pdev->release_ring);
+        SPICE_RING_POP(pdev->release_ring, notify);
     }
     RingRemove(pdev, item);
     return CONTAINEROF(item, CacheImage, lru_link);
@@ -964,7 +964,7 @@ typedef struct InternalPalette {
     UINT32 refs;
     struct InternalPalette *next;
     RingItem lru_link;
-    Palette palette;
+    SpicePalette palette;
 } InternalPalette;
 
 #define PALETTE_HASH_VAL(unique) ((int)(unique) & PALETTE_HASH_NASKE)
@@ -1053,7 +1053,7 @@ static _inline void PaletteCacheAdd(PDev *pdev, InternalPalette *palette)
 }
 
 
-static _inline void GetPallette(PDev *pdev, Bitmap *bitmap, XLATEOBJ *color_trans)
+static _inline void GetPallette(PDev *pdev, SpiceBitmap *bitmap, XLATEOBJ *color_trans)
 {
     InternalPalette *internal;
 
@@ -1085,7 +1085,7 @@ static _inline void GetPallette(PDev *pdev, Bitmap *bitmap, XLATEOBJ *color_tran
 static void FreeQuicImage(PDev *pdev, Resource *res) // todo: defer
 {
     InternalImage *internal;
-    PHYSICAL chunk_phys;
+    QXLPHYSICAL chunk_phys;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
@@ -1111,13 +1111,13 @@ static void FreeQuicImage(PDev *pdev, Resource *res) // todo: defer
 static _inline QuicImageType GetQuicImageType(UINT8 format)
 {
     switch (format) {
-    case BITMAP_FMT_32BIT:
+    case SPICE_BITMAP_FMT_32BIT:
         return QUIC_IMAGE_TYPE_RGB32;
-    case BITMAP_FMT_16BIT:
+    case SPICE_BITMAP_FMT_16BIT:
         return QUIC_IMAGE_TYPE_RGB16;
-    case BITMAP_FMT_RGBA:
+    case SPICE_BITMAP_FMT_RGBA:
         return QUIC_IMAGE_TYPE_RGBA;
-    case BITMAP_FMT_24BIT:
+    case SPICE_BITMAP_FMT_24BIT:
         return QUIC_IMAGE_TYPE_RGB24;
     default:
         return QUIC_IMAGE_TYPE_INVALID;
@@ -1209,7 +1209,7 @@ static _inline Resource *GetQuicImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color
 
     internal = (InternalImage *)image_res->res;
     SetImageId(internal, cache_me, width, height, format, key);
-    internal->image.descriptor.type = IMAGE_TYPE_QUIC;
+    internal->image.descriptor.type = SPICE_IMAGE_TYPE_QUIC;
     internal->image.descriptor.width = width;
     internal->image.descriptor.height = height;
 
@@ -1241,7 +1241,7 @@ static _inline Resource *GetQuicImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color
 static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
 {
     InternalImage *internal;
-    PHYSICAL chunk_phys;
+    QXLPHYSICAL chunk_phys;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
@@ -1252,8 +1252,8 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
     }
 
     if (internal->image.bitmap.palette) {
-        Palette *palette = (Palette *)VA(pdev, internal->image.bitmap.palette,
-                                         pdev->main_mem_slot);
+        SpicePalette *palette = (SpicePalette *)VA(pdev, internal->image.bitmap.palette,
+                                                   pdev->main_mem_slot);
         ReleasePalette(pdev, CONTAINEROF(palette, InternalPalette, palette));
     }
 
@@ -1299,7 +1299,7 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
 
     internal = (InternalImage *)image_res->res;
     SetImageId(internal, cache_me, width, height, format, key);
-    internal->image.descriptor.type = IMAGE_TYPE_BITMAP;
+    internal->image.descriptor.type = SPICE_IMAGE_TYPE_BITMAP;
     chunk = (QXLDataChunk *)(&internal->image.bitmap + 1);
     chunk->data_size = 0;
     chunk->prev_chunk = 0;
@@ -1343,17 +1343,17 @@ static _inline UINT32 GetHash(UINT8 *src, INT32 width, INT32 height, UINT8 forma
                                   hash_value);
     }
 
-    if (format == BITMAP_FMT_32BIT && stride == line_size) {
+    if (format == SPICE_BITMAP_FMT_32BIT && stride == line_size) {
         hash_value = murmurhash2ajump3((UINT32 *)row_buf, width * height, hash_value);
     } else {
         for (row = 0; row < height; row++) {
     #ifdef ADAPTIVE_HASH
-            if (format ==  BITMAP_FMT_32BIT) {
+            if (format ==  SPICE_BITMAP_FMT_32BIT) {
                 hash_value = murmurhash2ajump3((UINT32 *)row_buf, width, hash_value);
             } else {
-                if (format == BITMAP_FMT_4BIT_BE && (width & 0x1)) {
+                if (format == SPICE_BITMAP_FMT_4BIT_BE && (width & 0x1)) {
                     last_byte = row_buf[line_size - 1] & 0xF0;
-                } else if (format == BITMAP_FMT_1BIT_BE && (reminder = width & 0x7)) {
+                } else if (format == SPICE_BITMAP_FMT_1BIT_BE && (reminder = width & 0x7)) {
                     last_byte = row_buf[line_size - 1] & ~((1 << (8 - reminder)) - 1);
                 }
                 if (last_byte) {
@@ -1376,22 +1376,22 @@ static _inline UINT32 GetFormatLineSize(INT32 width, ULONG bitmap_format, UINT8 
 {
     switch (bitmap_format) {
     case BMF_32BPP:
-        *format = BITMAP_FMT_32BIT;
+        *format = SPICE_BITMAP_FMT_32BIT;
         return width << 2;
     case BMF_24BPP:
-        *format = BITMAP_FMT_24BIT;
+        *format = SPICE_BITMAP_FMT_24BIT;
         return width * 3;
     case BMF_16BPP:
-        *format = BITMAP_FMT_16BIT;
+        *format = SPICE_BITMAP_FMT_16BIT;
         return width << 1;
     case BMF_8BPP:
-        *format = BITMAP_FMT_8BIT;
+        *format = SPICE_BITMAP_FMT_8BIT;
         return width;
     case BMF_4BPP:
-        *format = BITMAP_FMT_4BIT_BE;
+        *format = SPICE_BITMAP_FMT_4BIT_BE;
         return ALIGN(width, 2) >> 1;
     case BMF_1BPP:
-        *format = BITMAP_FMT_1BIT_BE;
+        *format = SPICE_BITMAP_FMT_1BIT_BE;
         return ALIGN(width, 8) >> 3;
     default:
         return 0;
@@ -1487,8 +1487,8 @@ static _inline UINT32 get_image_serial()
     return ret;
 }
 
-BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys, SURFOBJ *surf,
-                  Rect *area, XLATEOBJ *color_trans, UINT32 *hash_key, BOOL use_cache)
+BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SURFOBJ *surf,
+                  SpiceRect *area, XLATEOBJ *color_trans, UINT32 *hash_key, BOOL use_cache)
 {
     Resource *image_res;
     InternalImage *internal;
@@ -1608,8 +1608,8 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys, SURFO
     return TRUE;
 }
 
-BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys,
-                       SURFOBJ *surf, Rect *area)
+BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys,
+                       SURFOBJ *surf, SpiceRect *area)
 {
     Resource *image_res;
     InternalImage *internal;
@@ -1641,7 +1641,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys,
     }
 
     if (!ImageKeyGet(pdev, surf->hsurf, gdi_unique, &key)) {
-        key = GetHash(surf->pvScan0, surf->sizlBitmap.cx, surf->sizlBitmap.cy, BITMAP_FMT_RGBA,
+        key = GetHash(surf->pvScan0, surf->sizlBitmap.cx, surf->sizlBitmap.cy, SPICE_BITMAP_FMT_RGBA,
                       surf->sizlBitmap.cx << 2, surf->lDelta, NULL);
         ImageKeyPut(pdev, surf->hsurf, gdi_unique, key);
         DEBUG_PRINT((pdev, 11, "%s: ImageKeyPut %u\n", __FUNCTION__, key));
@@ -1649,7 +1649,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys,
         DEBUG_PRINT((pdev, 11, "%s: ImageKeyGet %u\n", __FUNCTION__, key));
     }
 
-    if (cache_image = ImageCacheGetByKey(pdev, key, TRUE, BITMAP_FMT_RGBA,
+    if (cache_image = ImageCacheGetByKey(pdev, key, TRUE, SPICE_BITMAP_FMT_RGBA,
                                          surf->sizlBitmap.cx, surf->sizlBitmap.cy)) {
         DEBUG_PRINT((pdev, 11, "%s: ImageCacheGetByKey %u hits %u\n", __FUNCTION__,
                      key, cache_image->hits));
@@ -1665,7 +1665,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys,
         ImageCacheRemove(pdev, cache_image);
         cache_image->key = key;
         cache_image->image = NULL;
-        cache_image->format = BITMAP_FMT_RGBA;
+        cache_image->format = SPICE_BITMAP_FMT_RGBA;
         cache_image->width = surf->sizlBitmap.cx;
         cache_image->height = surf->sizlBitmap.cy;
         ImageCacheAdd(pdev, cache_image);
@@ -1686,9 +1686,9 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys,
     }
 
     if (!(image_res = GetQuicImage(pdev, surf, NULL, !!cache_image, width, height,
-                                   BITMAP_FMT_RGBA, src, width << 2, key))) {
+                                   SPICE_BITMAP_FMT_RGBA, src, width << 2, key))) {
         image_res = GetBitmapImage(pdev, surf, NULL, !!cache_image, width, height,
-                                   BITMAP_FMT_RGBA, src, width << 2, key);
+                                   SPICE_BITMAP_FMT_RGBA, src, width << 2, key);
     }
     internal = (InternalImage *)image_res->res;
     if ((internal->cache = cache_image)) {
@@ -1704,7 +1704,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, PHYSICAL *image_phys,
     return TRUE;
 }
 
-BOOL QXLGetBitsFromCache(PDev *pdev, QXLDrawable *drawable, UINT32 hash_key, PHYSICAL *image_phys)
+BOOL QXLGetBitsFromCache(PDev *pdev, QXLDrawable *drawable, UINT32 hash_key, QXLPHYSICAL *image_phys)
 {
     InternalImage *internal;
     CacheImage *cache_image;
@@ -1720,10 +1720,10 @@ BOOL QXLGetBitsFromCache(PDev *pdev, QXLDrawable *drawable, UINT32 hash_key, PHY
     return FALSE;
 }
 
-BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, QMask *qxl_mask, SURFOBJ *mask, POINTL *pos,
+BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, SpiceQMask *qxl_mask, SURFOBJ *mask, POINTL *pos,
                 BOOL invers, LONG width, LONG height)
 {
-    Rect area;
+    SpiceRect area;
 
     if (!mask) {
         qxl_mask->bitmap = 0;
@@ -1736,7 +1736,7 @@ BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, QMask *qxl_mask, SURFOBJ *mas
         return FALSE;
     }
 
-    qxl_mask->flags = invers ? MASK_INVERS : 0;
+    qxl_mask->flags = invers ? SPICE_MASK_FLAGS_INVERS : 0;
 
     area.left = pos->x;
     area.right = area.left + width;
@@ -1757,7 +1757,7 @@ static void FreeBuf(PDev *pdev, Resource *res)
     FreeMem(pdev, res);
 }
 
-UINT8 *QXLGetBuf(PDev *pdev, QXLDrawable *drawable, PHYSICAL *buf_phys, UINT32 size)
+UINT8 *QXLGetBuf(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *buf_phys, UINT32 size)
 {
     Resource *buf_res;
 
@@ -1797,7 +1797,7 @@ void UpdateArea(PDev *pdev, RECTL *area)
     updat_cmd->update_id = ++pdev->Res.update_id;
 
     WaitForCmdRing(pdev);
-    cmd = RING_PROD_ITEM(pdev->cmd_ring);
+    cmd = SPICE_RING_PROD_ITEM(pdev->cmd_ring);
     cmd->type = QXL_CMD_UPDATE;
     cmd->data = PA(pdev, updat_cmd, pdev->main_mem_slot);
     PUSH_CMD(pdev);
@@ -1839,7 +1839,7 @@ void UpdateArea(PDev *pdev, RECTL *area)
 
 static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS *glyps,
                                     QXLDataChunk **chunk_ptr, UINT8 **now_ptr,
-                                    UINT8 **end_ptr, int bpp, POINTL *delta, Point **str_pos)
+                                    UINT8 **end_ptr, int bpp, POINTL *delta, SpicePoint **str_pos)
 {
     GLYPHPOS *glyps_end = glyps + count;
     QXLDataChunk *chunk = *chunk_ptr;
@@ -1848,7 +1848,7 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     for (; glyps < glyps_end; glyps++) {
-        RasterGlyph *glyph;
+        SpiceRasterGlyph *glyph;
         UINT8 *line;
         UINT8 *end_line;
         UINT32 stride;
@@ -1857,7 +1857,7 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
             NEW_DATA_CHUNK(&pdev->Res.num_glyphs_pages, PAGE_SIZE);
         }
 
-        glyph = (RasterGlyph *)now;
+        glyph = (SpiceRasterGlyph *)now;
         if (delta) {
             if (*str_pos) {
                 glyph->render_pos.x = (*str_pos)->x + delta->x;
@@ -1911,7 +1911,7 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
 
 static _inline void add_vec_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS *glyps,
                                    QXLDataChunk **chunk_ptr, UINT8 **now_ptr, UINT8 **end_ptr,
-                                   POINTL *delta, Point  **str_pos)
+                                   POINTL *delta, SpicePoint  **str_pos)
 {
     GLYPHPOS *glyps_end = glyps + count;
     QXLDataChunk *chunk = *chunk_ptr;
@@ -1921,14 +1921,14 @@ static _inline void add_vec_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYP
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
     for (; glyps < glyps_end; glyps++) {
-        VectotGlyph *glyph;
+        SpiceVectorGlyph *glyph;
 
         if (end - now < sizeof(*glyph)) {
             NEW_DATA_CHUNK(&pdev->Res.num_glyphs_pages, PAGE_SIZE);
         }
         chunk->data_size += sizeof(*glyph);
         str->data_size += sizeof(*glyph);
-        glyph = (VectotGlyph *)now;
+        glyph = (SpiceVectorGlyph *)now;
         now += sizeof(*glyph);
 
         if (delta) {
@@ -1958,11 +1958,11 @@ static _inline void add_vec_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYP
 
 static _inline BOOL add_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS *glyps,
                                QXLDataChunk **chunk, UINT8 **now, UINT8 **end, POINTL *delta,
-                               Point  **str_pos)
+                               SpicePoint  **str_pos)
 {
-    if (str->flags & STRING_RASTER_A1) {
+    if (str->flags & SPICE_STRING_FLAGS_RASTER_A1) {
         add_rast_glyphs(pdev, str, count, glyps, chunk, now, end, 1, delta, str_pos);
-    } else if (str->flags & STRING_RASTER_A4) {
+    } else if (str->flags & SPICE_STRING_FLAGS_RASTER_A4) {
         add_rast_glyphs(pdev, str, count, glyps, chunk, now, end, 4, delta, str_pos);
     } else {
         DEBUG_PRINT((pdev, 0, "%s: vector: untested path, doing nothing!!!\n", __FUNCTION__));
@@ -1974,7 +1974,7 @@ static _inline BOOL add_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS
 
 static void FreeSring(PDev *pdev, Resource *res)
 {
-    PHYSICAL chunk_phys;
+    QXLPHYSICAL chunk_phys;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     chunk_phys = ((QXLString *)res->res)->chunk.next_chunk;
@@ -1994,7 +1994,7 @@ static void FreeSring(PDev *pdev, Resource *res)
 
 #define TEXT_ALLOC_SIZE sizeof(Resource) + sizeof(QXLString) + 512
 
-BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, PHYSICAL *str_phys, FONTOBJ *font, STROBJ *str)
+BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *str_phys, FONTOBJ *font, STROBJ *str)
 {
     Resource *str_res;
     QXLString *qxl_str;
@@ -2005,7 +2005,7 @@ BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, PHYSICAL *str_phys, FONTOBJ *f
     static int id_QXLGetStr = 0;
     POINTL  delta;
     POINTL  *delta_ptr;
-    Point  *str_pos;
+    SpicePoint  *str_pos;
 
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
 
@@ -2020,8 +2020,8 @@ BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, PHYSICAL *str_phys, FONTOBJ *f
     qxl_str->flags = 0;
 
     if (font->flFontType & FO_TYPE_RASTER) {
-        qxl_str->flags = (font->flFontType & FO_GRAY16) ?   STRING_RASTER_A4 :
-                         STRING_RASTER_A1;
+        qxl_str->flags = (font->flFontType & FO_GRAY16) ?   SPICE_STRING_FLAGS_RASTER_A4 :
+                         SPICE_STRING_FLAGS_RASTER_A1;
     }
 
     chunk = &qxl_str->chunk;
@@ -2104,7 +2104,7 @@ void PushCursorCmd(PDev *pdev, QXLCursorCmd *cursor_cmd)
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
     WaitForCursorRing(pdev);
-    cmd = RING_PROD_ITEM(pdev->cursor_ring);
+    cmd = SPICE_RING_PROD_ITEM(pdev->cursor_ring);
     cmd->type = QXL_CMD_CURSOR;
     cmd->data = PA(pdev, cursor_cmd, pdev->main_mem_slot);
     PUSH_CURSOR_CMD(pdev);
@@ -2200,7 +2200,7 @@ static InternalCursor *CursorCacheGet(PDev *pdev, HSURF hsurf, UINT32 unique)
 
 static void FreeCursor(PDev *pdev, Resource *res)
 {
-    PHYSICAL chunk_phys;
+    QXLPHYSICAL chunk_phys;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     chunk_phys = ((InternalCursor *)res->res)->cursor.chunk.next_chunk;
@@ -2265,7 +2265,7 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     cursor->header.type = type;
     cursor->header.unique = unique ? ++pdev->Res.last_cursor_id : 0;
     cursor->header.width = (UINT16)surf->sizlBitmap.cx;
-    cursor->header.height = (type == CURSOR_TYPE_MONO) ? (UINT16)surf->sizlBitmap.cy >> 1 :
+    cursor->header.height = (type == SPICE_CURSOR_TYPE_MONO) ? (UINT16)surf->sizlBitmap.cy >> 1 :
                             (UINT16)surf->sizlBitmap.cy;
     cursor->header.hot_spot_x = (UINT16)hot_x;
     cursor->header.hot_spot_y = (UINT16)hot_y;
@@ -2281,23 +2281,23 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     info->end = (UINT8 *)res + CURSOR_ALLOC_SIZE;
 
     switch (type) {
-    case CURSOR_TYPE_ALPHA:
-    case CURSOR_TYPE_COLOR32:
+    case SPICE_CURSOR_TYPE_ALPHA:
+    case SPICE_CURSOR_TYPE_COLOR32:
         line_size = cursor->header.width << 2;
         break;
-    case CURSOR_TYPE_MONO:
+    case SPICE_CURSOR_TYPE_MONO:
         line_size = ALIGN(cursor->header.width, 8) >> 3;
         break;
-    case CURSOR_TYPE_COLOR4:
+    case SPICE_CURSOR_TYPE_COLOR4:
         line_size = ALIGN(cursor->header.width, 2) >> 1;
         break;
-    case CURSOR_TYPE_COLOR8:
+    case SPICE_CURSOR_TYPE_COLOR8:
         line_size = cursor->header.width;
         break;
-    case CURSOR_TYPE_COLOR16:
+    case SPICE_CURSOR_TYPE_COLOR16:
         line_size = cursor->header.width << 1;
         break;
-    case CURSOR_TYPE_COLOR24:
+    case SPICE_CURSOR_TYPE_COLOR24:
         line_size = cursor->header.width * 3;
         break;
     }
@@ -2326,7 +2326,7 @@ BOOL GetAlphaCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
     ASSERT(pdev, surf->sizlBitmap.cx > 0 && surf->sizlBitmap.cy > 0);
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
-    GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, CURSOR_TYPE_ALPHA, &info);
+    GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, SPICE_CURSOR_TYPE_ALPHA, &info);
     DEBUG_PRINT((pdev, 8, "%s: done\n", __FUNCTION__));
     return TRUE;
 }
@@ -2341,7 +2341,7 @@ BOOL GetMonoCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFOB
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
 
-    GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, CURSOR_TYPE_MONO, &info);
+    GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, SPICE_CURSOR_TYPE_MONO, &info);
     DEBUG_PRINT((pdev, 8, "%s: done\n", __FUNCTION__));
     return TRUE;
 }
@@ -2371,19 +2371,19 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
 
     switch (surf->iBitmapFormat) {
     case BMF_32BPP:
-        type = CURSOR_TYPE_COLOR32;
+        type = SPICE_CURSOR_TYPE_COLOR32;
         break;
     case BMF_24BPP:
-        type = CURSOR_TYPE_COLOR24;
+        type = SPICE_CURSOR_TYPE_COLOR24;
         break;
     case BMF_16BPP:
-        type = CURSOR_TYPE_COLOR16;
+        type = SPICE_CURSOR_TYPE_COLOR16;
         break;
     case BMF_8BPP:
-        type = CURSOR_TYPE_COLOR8;
+        type = SPICE_CURSOR_TYPE_COLOR8;
         break;
     case BMF_4BPP:
-        type = CURSOR_TYPE_COLOR4;
+        type = SPICE_CURSOR_TYPE_COLOR4;
         break;
     default:
         DEBUG_PRINT((pdev, 0, "%s: unexpected format\n", __FUNCTION__));
@@ -2394,9 +2394,9 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
         UINT8 *src;
         UINT8 *src_end;
 
-        if (type == CURSOR_TYPE_COLOR8) {
+        if (type == SPICE_CURSOR_TYPE_COLOR8) {
 
-            DEBUG_PRINT((pdev, 8, "%s: CURSOR_TYPE_COLOR8\n", __FUNCTION__));
+            DEBUG_PRINT((pdev, 8, "%s: SPICE_CURSOR_TYPE_COLOR8\n", __FUNCTION__));
             ASSERT(pdev, color_trans);
             ASSERT(pdev, color_trans->pulXlate);
             ASSERT(pdev, color_trans->flXlate & XO_TABLE);
@@ -2415,7 +2415,7 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
                 }
             }
             info.cursor->data_size += 256 << 2;
-        } else if (type == CURSOR_TYPE_COLOR4) {
+        } else if (type == SPICE_CURSOR_TYPE_COLOR4) {
 
             ASSERT(pdev, color_trans);
             ASSERT(pdev, color_trans->pulXlate);
@@ -2471,7 +2471,7 @@ BOOL GetTransparentCursor(PDev *pdev, QXLCursorCmd *cmd)
     RingItemInit(&internal->lru_link);
 
     cursor = &internal->cursor;
-    cursor->header.type = CURSOR_TYPE_MONO;
+    cursor->header.type = SPICE_CURSOR_TYPE_MONO;
     cursor->header.unique = 0;
     cursor->header.width = 0;
     cursor->header.height = 0;

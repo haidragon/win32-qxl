@@ -314,12 +314,12 @@ BOOL APIENTRY DrvRealizeBrush(BRUSHOBJ *brush, SURFOBJ *target, SURFOBJ *pattern
 }
 
 
-static _inline BOOL GetPattern(PDev *pdev, QXLDrawable *drawable, PHYSICAL *pattern,
+static _inline BOOL GetPattern(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *pattern,
                                InternalBrush *brush)
 {
     HSURF hsurf;
     SURFOBJ *surf_obj;
-    Rect area;
+    SpiceRect area;
     UINT32 key;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
@@ -360,7 +360,7 @@ error_1:
 }
 
 
-BOOL QXLGetBrush(PDev *pdev, QXLDrawable *drawable, Brush *qxl_brush,
+BOOL QXLGetBrush(PDev *pdev, QXLDrawable *drawable, SpiceBrush *qxl_brush,
                             BRUSHOBJ *brush, POINTL *brush_pos)
 {
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
@@ -374,14 +374,14 @@ BOOL QXLGetBrush(PDev *pdev, QXLDrawable *drawable, Brush *qxl_brush,
             DEBUG_PRINT((pdev, 0, "%s: brush realize failed\n", __FUNCTION__));
             return FALSE;
         }
-        qxl_brush->type = BRUSH_TYPE_PATTERN;
+        qxl_brush->type = SPICE_BRUSH_TYPE_PATTERN;
         qxl_brush->u.pattern.pos.x = brush_pos->x;
         qxl_brush->u.pattern.pos.y = brush_pos->y;
         if (!GetPattern(pdev, drawable, &qxl_brush->u.pattern.pat, brush->pvRbrush)) {
             return FALSE;
         }
     } else {
-        qxl_brush->type = BRUSH_TYPE_SOLID;
+        qxl_brush->type = SPICE_BRUSH_TYPE_SOLID;
         qxl_brush->u.color = brush->iSolidColor;
         DEBUG_PRINT((pdev, 11, "%s: color 0x%x\n", __FUNCTION__, qxl_brush->u.color));
     }

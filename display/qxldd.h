@@ -137,7 +137,7 @@ typedef struct UpdateTrace {
 
 typedef struct PMemSlot {
     MemSlot slot;
-    ADDRESS high_bits;
+    SPICE_ADDRESS high_bits;
 } PMemSlot;
 
 typedef struct DevResDynamic {
@@ -201,7 +201,7 @@ typedef struct PDev {
     FLONG blue_mask;
     ULONG fp_state_size;
 
-    PHYSICAL surf_phys;
+    QXLPHYSICAL surf_phys;
     UINT8 *surf_base;
 
     QuicData *quic_data;
@@ -231,7 +231,7 @@ typedef struct PDev {
     UINT8 main_mem_slot;
     UINT8 slot_id_bits;
     UINT8 slot_gen_bits;
-    ADDRESS va_slot_mask;
+    SPICE_ADDRESS va_slot_mask;
 
     UINT32 num_io_pages;
     UINT8 *io_pages_virt;
@@ -240,7 +240,7 @@ typedef struct PDev {
     UINT32 *dev_update_id;
 
     UINT32 update_area_port;
-    Rect *update_area;
+    SpiceRect *update_area;
 
     UINT32 *mm_clock;
 

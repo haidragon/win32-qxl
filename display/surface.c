@@ -70,7 +70,7 @@ VOID FreeDrawArea(DrawArea *drawarea)
     EngDeleteSurface(drawarea->bitmap);
 }
 
-HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, PHYSICAL *phys_mem,
+HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *phys_mem,
                            UINT8 **base_mem, UINT8 allocation_type)
 {
     UINT8 depth;

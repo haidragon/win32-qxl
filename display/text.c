@@ -72,10 +72,10 @@ BOOL APIENTRY DrvTextOut(SURFOBJ *surf, STROBJ *str, FONTOBJ *font, CLIPOBJ *cli
             goto error;
         }
         CopyRect(&drawable->u.text.back_area, &area);
-        drawable->u.text.back_mode = ROPD_OP_PUT;
+        drawable->u.text.back_mode = SPICE_ROPD_OP_PUT;
         drawable->effect = QXL_EFFECT_OPAQUE;
     } else {
-        drawable->u.text.back_brush.type = BRUSH_TYPE_NONE;
+        drawable->u.text.back_brush.type = SPICE_BRUSH_TYPE_NONE;
         RtlZeroMemory(&drawable->u.text.back_area, sizeof(drawable->u.text.back_area));
         drawable->u.text.back_mode = 0;
         drawable->effect = QXL_EFFECT_BLEND;
@@ -85,7 +85,7 @@ BOOL APIENTRY DrvTextOut(SURFOBJ *surf, STROBJ *str, FONTOBJ *font, CLIPOBJ *cli
     back_rop = &rops2[((mix >> 8) - 1) & 0x0f];
 
     if (!((fore_rop->flags | back_rop->flags) & ROP3_BRUSH)) {
-        drawable->u.stroke.brush.type = BRUSH_TYPE_NONE;
+        drawable->u.stroke.brush.type = SPICE_BRUSH_TYPE_NONE;
     } else if (!QXLGetBrush(pdev, drawable, &drawable->u.text.fore_brush, fore_brush,
                             brushs_origin)) {
         DEBUG_PRINT((pdev, 0, "%s: get brush failed\n", __FUNCTION__));

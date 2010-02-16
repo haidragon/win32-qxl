@@ -570,7 +570,7 @@ static VOID HideMouse(PDev *pdev)
 }
 
 static VOID CreatePrimarySurface(PDev *pdev, UINT32 depth, UINT32 width, UINT32 height,
-                                 PHYSICAL phys_mem)
+                                 QXLPHYSICAL phys_mem)
 {
     pdev->primary_surface_create->depth = depth;
     pdev->primary_surface_create->width = width;
@@ -610,7 +610,7 @@ BOOL SetHardwareMode(PDev *pdev)
 
 static VOID UpdateMainSlot(PDev *pdev, MemSlot *slot)
 {
-    ADDRESS high_bits;
+    SPICE_ADDRESS high_bits;
 
 
     pdev->mem_slots[pdev->main_mem_slot].slot = *slot;
@@ -620,7 +620,7 @@ static VOID UpdateMainSlot(PDev *pdev, MemSlot *slot)
     high_bits <<= (64 - (pdev->slot_gen_bits + pdev->slot_id_bits));
     pdev->mem_slots[pdev->main_mem_slot].high_bits = high_bits;
 
-    pdev->va_slot_mask = (~(PHYSICAL)0) >> (pdev->slot_id_bits + pdev->slot_gen_bits);
+    pdev->va_slot_mask = (~(QXLPHYSICAL)0) >> (pdev->slot_id_bits + pdev->slot_gen_bits);
 }
 
 BOOL PrepareHardware(PDev *pdev)
@@ -629,7 +629,7 @@ BOOL PrepareHardware(PDev *pdev)
     VIDEO_MEMORY_INFORMATION video_mem_Info;
     DWORD length;
     QXLDriverInfo dev_info;
-    ADDRESS high_bits;
+    SPICE_ADDRESS high_bits;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
@@ -774,7 +774,7 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
     PDev *pdev;
     HSURF surf;
     DWORD length;
-    PHYSICAL phys_mem;
+    QXLPHYSICAL phys_mem;
     UINT8 *base_mem;
     DrawArea drawarea;
 
@@ -1026,7 +1026,7 @@ FIX FlotaToFixed(FLOATL val, FLOATL scale)
     return ret;
 }
 
-static BOOL GetGeometricAttr(PDev *pdev, QXLDrawable *drawable, LineAttr *q_line_attr,
+static BOOL GetGeometricAttr(PDev *pdev, QXLDrawable *drawable, SpiceLineAttr *q_line_attr,
                             LINEATTRS *line_attr, XFORMOBJ *width_transform)
 {
     ULONG save_buf_size;
@@ -1119,7 +1119,7 @@ err1:
     return FALSE;
 }
 
-static BOOL GetCosmeticAttr(PDev *pdev, QXLDrawable *drawable, LineAttr *q_line_attr,
+static BOOL GetCosmeticAttr(PDev *pdev, QXLDrawable *drawable, SpiceLineAttr *q_line_attr,
                             LINEATTRS *line_attr)
 {
     ASSERT(pdev, LINE_CAP_ROUND == ENDCAP_ROUND && LINE_CAP_SQUARE == ENDCAP_SQUARE &&
@@ -1224,7 +1224,7 @@ BOOL APIENTRY DrvStrokePath(SURFOBJ *surf, PATHOBJ *path, CLIPOBJ *clip, XFORMOB
     back_rop = &rops2[((mix >> 8) - 1) & 0x0f];
 
     if (!((fore_rop->flags | back_rop->flags) & ROP3_BRUSH)) {
-        drawable->u.stroke.brush.type = BRUSH_TYPE_NONE;
+        drawable->u.stroke.brush.type = SPICE_BRUSH_TYPE_NONE;
     } else if (!QXLGetBrush(pdev, drawable, &drawable->u.stroke.brush, brush, brush_pos)) {
         goto err;
     }
