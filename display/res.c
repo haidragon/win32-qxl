@@ -768,28 +768,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
         rects->chunk.next_chunk = 0;
         CopyRect((SpiceRect *)rects->chunk.data, &clip->rclBounds);
     } else {
-
-        ASSERT(pdev, clip->iDComplexity == DC_COMPLEX);
-        if (clip->iMode == TC_PATHOBJ) {
-            Resource *path_res;
-            PATHOBJ *path = CLIPOBJ_ppoGetPath(clip);
-            if (!path) {
-                DEBUG_PRINT((pdev, 0, "%s: get path failed\n", __FUNCTION__));
-                return FALSE;
-            }
-
-            path_res = __GetPath(pdev, path);
-            EngDeletePath(path);
-            DrawableAddRes(pdev, drawable, path_res);
-            RELEASE_RES(pdev, path_res);
-            drawable->clip.type = SPICE_CLIP_TYPE_PATH;
-            drawable->clip.data = PA(pdev, path_res->res, pdev->main_mem_slot);
-            DEBUG_PRINT((pdev, 10, "%s: done\n", __FUNCTION__));
-            return TRUE;
-        } else {
-            ASSERT(pdev, clip->iMode == TC_RECTANGLES);
-            rects_res = GetClipRects(pdev, clip);
-        }
+      rects_res = GetClipRects(pdev, clip);
     }
 
     DrawableAddRes(pdev, drawable, rects_res);
