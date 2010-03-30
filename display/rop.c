@@ -20,6 +20,7 @@
 #include "utils.h"
 #include "res.h"
 #include "rop.h"
+#include "surface.h"
 
 
 enum ROP3type {
@@ -382,21 +383,28 @@ ROP3Info rops3[] = {
 };
 
 
-static BOOL DoFill(PDev *pdev, RECTL *area, CLIPOBJ *clip, BRUSHOBJ *brush, POINTL *brush_pos,
-                   ROP3Info *rop_info, SURFOBJ *mask, POINTL *mask_pos, BOOL invers_mask)
+static BOOL DoFill(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, BRUSHOBJ *brush,
+                   POINTL *brush_pos, ROP3Info *rop_info, SURFOBJ *mask, POINTL *mask_pos,
+                   BOOL invers_mask)
 {
     QXLDrawable *drawable;
+    UINT32 width;
+    UINT32 height;
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
     ASSERT(pdev, pdev && area && brush);
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_FILL, area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_FILL, area, clip, surface_id))) {
         return FALSE;
     }
 
-    if (!QXLGetBrush(pdev, drawable, &drawable->u.fill.brush, brush, brush_pos) ||
+    width = area->right - area->left;
+    height = area->bottom - area->top;
+
+    if (!QXLGetBrush(pdev, drawable, &drawable->u.fill.brush, brush, brush_pos,
+                     &drawable->surfaces_dest[0], &drawable->surfaces_rects[0]) ||
         !QXLGetMask(pdev, drawable, &drawable->u.fill.mask, mask, mask_pos, invers_mask,
-                    area->right - area->left, area->bottom - area->top)) {
+                     width, height, &drawable->surfaces_dest[1])) {
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;
     }
@@ -405,28 +413,37 @@ static BOOL DoFill(PDev *pdev, RECTL *area, CLIPOBJ *clip, BRUSHOBJ *brush, POIN
 
     drawable->effect = mask ? QXL_EFFECT_BLEND : rop_info->effect;
 
+    if (mask_pos) {
+        CopyRectPoint(&drawable->surfaces_rects[1], mask_pos, width, height);
+    }
+
     PushDrawable(pdev, drawable);
     return TRUE;
 }
 
 static BOOL GetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *bitmap_phys, SURFOBJ *surf,
-                      SpiceRect *area, XLATEOBJ *color_trans, BOOL use_cache)
+                      SpiceRect *area, XLATEOBJ *color_trans, BOOL use_cache, INT32 *surface_dest)
 {
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
     if (surf->iType != STYPE_BITMAP) {
+        UINT32 surface_id;
+
         ASSERT(pdev, (PDev *)surf->dhpdev == pdev);
-        DEBUG_PRINT((pdev, 9, "%s copy from self\n", __FUNCTION__));
-        *bitmap_phys = 0;
-        drawable->self_bitmap = TRUE;
-        drawable->self_bitmap_area = *area;
-        area->right = area->right - area->left;
-        area->left = 0;
-        area->bottom = area->bottom - area->top;
-        area->top = 0;
-        return TRUE;
+        surface_id =  GetSurfaceId(surf);
+        if (surface_id == drawable->surface_id) {
+            DEBUG_PRINT((pdev, 9, "%s copy from self\n", __FUNCTION__));
+            *bitmap_phys = 0;
+            drawable->self_bitmap = TRUE;
+            drawable->self_bitmap_area = *area;
+            area->right = area->right - area->left;
+            area->left = 0;
+            area->bottom = area->bottom - area->top;
+            area->top = 0;
+            return TRUE;
+        }
     }
     return QXLGetBitmap(pdev, drawable, &drawable->u.opaque.src_bitmap, surf,
-                        area, color_trans, NULL, use_cache);
+                        area, color_trans, NULL, use_cache, surface_dest);
 }
 
 static _inline UINT8 GdiScaleModeToQxl(ULONG scale_mode)
@@ -435,30 +452,43 @@ static _inline UINT8 GdiScaleModeToQxl(ULONG scale_mode)
                                       SPICE_IMAGE_SCALE_MODE_NEAREST;
 }
 
-static BOOL DoOpaque(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *src_rect,
-                     XLATEOBJ *color_trans, BRUSHOBJ *brush, POINTL *brush_pos,
+static BOOL DoOpaque(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SURFOBJ *src,
+                     RECTL *src_rect, XLATEOBJ *color_trans, BRUSHOBJ *brush, POINTL *brush_pos,
                      UINT16 rop_decriptor, SURFOBJ *mask, POINTL *mask_pos, BOOL invers_mask,
                      ULONG scale_mode)
 {
     QXLDrawable *drawable;
+    UINT32 width;
+    UINT32 height;
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
     ASSERT(pdev, pdev && area && brush && src_rect && src);
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_OPAQUE, area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_OPAQUE, area, clip, surface_id))) {
         return FALSE;
     }
 
     drawable->u.opaque.scale_mode = GdiScaleModeToQxl(scale_mode);
     CopyRect(&drawable->u.opaque.src_area, src_rect);
-    if (!QXLGetBrush(pdev, drawable, &drawable->u.opaque.brush, brush, brush_pos) ||
+
+    width = area->right - area->left;
+    height = area->bottom - area->top;
+
+    if (!QXLGetBrush(pdev, drawable, &drawable->u.opaque.brush, brush, brush_pos,
+                     &drawable->surfaces_dest[0], &drawable->surfaces_rects[0]) ||
         !QXLGetMask(pdev, drawable, &drawable->u.opaque.mask, mask, mask_pos, invers_mask,
-                    area->right - area->left, area->bottom - area->top) ||
+                    width, height, &drawable->surfaces_dest[1]) ||
         !GetBitmap(pdev, drawable, &drawable->u.opaque.src_bitmap, src,
-                   &drawable->u.opaque.src_area, color_trans, TRUE)) {
+                   &drawable->u.opaque.src_area, color_trans, TRUE,
+                   &drawable->surfaces_dest[2])) {
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;
     }
+
+    if (mask_pos) {
+        CopyRectPoint(&drawable->surfaces_rects[1], mask_pos, width, height);
+    }
+    CopyRect(&drawable->surfaces_rects[2], src_rect);
 
     drawable->u.opaque.rop_decriptor = rop_decriptor;
     drawable->effect = mask ? QXL_EFFECT_BLEND : QXL_EFFECT_OPAQUE;
@@ -521,7 +551,7 @@ static BOOL StreamTest(PDev *pdev, SURFOBJ *src_surf, XLATEOBJ *color_trans, REC
     return TRUE;
 }
 
-static BOOL TestSplitClips(PDev *pdev, RECTL *src_rect, CLIPOBJ *clip, SURFOBJ *mask)
+static BOOL TestSplitClips(PDev *pdev, SURFOBJ *src, RECTL *src_rect, CLIPOBJ *clip, SURFOBJ *mask)
 {
     UINT32 width;
     UINT32 height;
@@ -530,6 +560,10 @@ static BOOL TestSplitClips(PDev *pdev, RECTL *src_rect, CLIPOBJ *clip, SURFOBJ *
     int more;
 
     if (!clip || mask) {
+        return FALSE;
+    }
+
+    if (src->iType != STYPE_BITMAP) {
         return FALSE;
     }
 
@@ -574,19 +608,24 @@ static BOOL TestSplitClips(PDev *pdev, RECTL *src_rect, CLIPOBJ *clip, SURFOBJ *
     return FALSE;
 }
 
-static _inline BOOL DoPartialCopy(PDev *pdev, SURFOBJ *src, RECTL *src_rect, RECTL *area_rect,
-                                  RECTL *clip_rect, XLATEOBJ *color_trans, ULONG scale_mode,
-                                  UINT16 rop_decriptor)
+static _inline BOOL DoPartialCopy(PDev *pdev, UINT32 surface_id, SURFOBJ *src, RECTL *src_rect,
+                                  RECTL *area_rect, RECTL *clip_rect, XLATEOBJ *color_trans,
+                                  ULONG scale_mode, UINT16 rop_decriptor)
 {
     QXLDrawable *drawable;
     RECTL clip_area;
+    UINT32 width;
+    UINT32 height;
 
     SectRect(area_rect, clip_rect, &clip_area);
     if (IsEmptyRect(&clip_area)) {
         return TRUE;
     }
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_COPY, &clip_area, NULL))) {
+    width = clip_area.right - clip_area.left;
+    height = clip_area.bottom - clip_area.top;
+
+    if (!(drawable = Drawable(pdev, QXL_DRAW_COPY, &clip_area, NULL, surface_id))) {
         return FALSE;
     }
 
@@ -603,23 +642,29 @@ static _inline BOOL DoPartialCopy(PDev *pdev, SURFOBJ *src, RECTL *src_rect, REC
                                       clip_area.left;
 
     if(!GetBitmap(pdev, drawable, &drawable->u.copy.src_bitmap, src, &drawable->u.copy.src_area,
-                  color_trans, FALSE)) {
+                  color_trans, FALSE, &drawable->surfaces_dest[0])) {
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;
     }
+    CopyRect(&drawable->surfaces_rects[0], src_rect);
     PushDrawable(pdev, drawable);
     return TRUE;
 }
 
-static BOOL DoCopy(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *src_rect,
-                   XLATEOBJ *color_trans, UINT16 rop_decriptor, SURFOBJ *mask, POINTL *mask_pos,
-                   BOOL invers_mask, ULONG scale_mode)
+static BOOL DoCopy(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SURFOBJ *src,
+                   RECTL *src_rect, XLATEOBJ *color_trans, UINT16 rop_decriptor, SURFOBJ *mask,
+                   POINTL *mask_pos, BOOL invers_mask, ULONG scale_mode)
 {
     QXLDrawable *drawable;
     BOOL use_cache;
+    UINT32 width;
+    UINT32 height;
 
     ASSERT(pdev, pdev && area && src_rect && src);
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
+
+    width = area->right - area->left;
+    height = area->bottom - area->top;
 
     if (mask) {
         use_cache = TRUE;
@@ -627,12 +672,11 @@ static BOOL DoCopy(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *
         use_cache = StreamTest(pdev, src, color_trans, src_rect, area);
     }
 
-    if (use_cache && TestSplitClips(pdev, src_rect, clip, mask) &&
+    if (use_cache && TestSplitClips(pdev, src, src_rect, clip, mask) &&
         !CheckIfCacheImage(pdev, src, color_trans)) {
-
         if (clip->iDComplexity == DC_RECT) {
-            if (!DoPartialCopy(pdev, src, src_rect, area, &clip->rclBounds, color_trans, scale_mode,
-                               rop_decriptor)) {
+            if (!DoPartialCopy(pdev, surface_id, src, src_rect, area, &clip->rclBounds, color_trans,
+                               scale_mode, rop_decriptor)) {
                 return FALSE;
             }
         } else {
@@ -649,8 +693,8 @@ static BOOL DoCopy(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *
                 } buf;
                 more = CLIPOBJ_bEnum(clip, sizeof(buf), (ULONG *)&buf);
                 for(now = buf.rects, end = now + buf.count; now < end; now++) {
-                    if (!DoPartialCopy(pdev, src, src_rect, area, now, color_trans, scale_mode,
-                                       rop_decriptor)) {
+                    if (!DoPartialCopy(pdev, surface_id, src, src_rect, area, now, color_trans,
+                                       scale_mode, rop_decriptor)) {
                         return FALSE;
                     }
                 }
@@ -659,7 +703,7 @@ static BOOL DoCopy(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *
         return TRUE;
     }
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_COPY, area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_COPY, area, clip, surface_id))) {
         return FALSE;
     }
 
@@ -672,12 +716,17 @@ static BOOL DoCopy(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *
     drawable->u.copy.scale_mode = GdiScaleModeToQxl(scale_mode);
     CopyRect(&drawable->u.copy.src_area, src_rect);
     if (!QXLGetMask(pdev, drawable, &drawable->u.copy.mask, mask, mask_pos, invers_mask,
-                    area->right - area->left, area->bottom - area->top) ||
+                    width, height, &drawable->surfaces_dest[0]) ||
         !GetBitmap(pdev, drawable, &drawable->u.copy.src_bitmap, src, &drawable->u.copy.src_area,
-                   color_trans, use_cache)) {
+                   color_trans, use_cache, &drawable->surfaces_dest[1])) {
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;
     }
+
+    if (mask_pos) {
+        CopyRectPoint(&drawable->surfaces_rects[0], mask_pos, width, height);
+    }
+    CopyRect(&drawable->surfaces_rects[1], src_rect);
 
     drawable->u.copy.rop_decriptor = rop_decriptor;
     PushDrawable(pdev, drawable);
@@ -685,9 +734,11 @@ static BOOL DoCopy(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *
     return TRUE;
 }
 
-static BOOL DoCopyBits(PDev *pdev, CLIPOBJ *clip, RECTL *area, POINTL *src_pos)
+static BOOL DoCopyBits(PDev *pdev, UINT32 surface_id, CLIPOBJ *clip, RECTL *area, POINTL *src_pos)
 {
     QXLDrawable *drawable;
+    UINT32 width;
+    UINT32 height; 
 
     ASSERT(pdev, pdev && area && src_pos);
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
@@ -697,37 +748,54 @@ static BOOL DoCopyBits(PDev *pdev, CLIPOBJ *clip, RECTL *area, POINTL *src_pos)
         return TRUE;
     }
 
-    if (!(drawable = Drawable(pdev, QXL_COPY_BITS, area, clip))) {
+    width = area->right - area->left;
+    height = area->bottom - area->top;
+
+    if (!(drawable = Drawable(pdev, QXL_COPY_BITS, area, clip, surface_id))) {
         return FALSE;
     }
+
+    drawable->surfaces_dest[0] = surface_id;
+    CopyRectPoint(&drawable->surfaces_rects[0], src_pos, width, height);
+
     CopyPoint(&drawable->u.copy_bits.src_pos, src_pos);
     drawable->effect = QXL_EFFECT_OPAQUE;
     PushDrawable(pdev, drawable);
     return TRUE;
 }
 
-static BOOL DoBlend(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *src_rect,
-                    XLATEOBJ *color_trans, ROP3Info *rop_info, SURFOBJ *mask, POINTL *mask_pos,
-                    BOOL invers_mask, ULONG scale_mode)
+static BOOL DoBlend(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SURFOBJ *src,
+                    RECTL *src_rect, XLATEOBJ *color_trans, ROP3Info *rop_info, SURFOBJ *mask,
+                    POINTL *mask_pos, BOOL invers_mask, ULONG scale_mode)
 {
     QXLDrawable *drawable;
+    UINT32 width;
+    UINT32 height; 
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
     ASSERT(pdev, pdev && area && src_rect && src);
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_BLEND, area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_BLEND, area, clip, surface_id))) {
         return FALSE;
     }
+
+    width = area->right - area->left;
+    height = area->bottom - area->top;
 
     drawable->u.blend.scale_mode = GdiScaleModeToQxl(scale_mode);
     CopyRect(&drawable->u.blend.src_area, src_rect);
     if (!QXLGetMask(pdev, drawable, &drawable->u.blend.mask, mask, mask_pos, invers_mask,
-                    area->right - area->left, area->bottom - area->top) ||
+                    width, height, &drawable->surfaces_dest[0]) ||
         !GetBitmap(pdev, drawable, &drawable->u.blend.src_bitmap, src, &drawable->u.blend.src_area,
-                   color_trans, TRUE)) {
+                   color_trans, TRUE, &drawable->surfaces_dest[1])) {
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;
     }
+
+    if (mask_pos) {
+        CopyRectPoint(&drawable->surfaces_rects[0], mask_pos, width, height);
+    }
+    CopyRect(&drawable->surfaces_rects[1], src_rect);
 
     drawable->u.blend.rop_decriptor = rop_info->method_data;
     drawable->effect = mask ? QXL_EFFECT_BLEND : rop_info->effect;
@@ -735,45 +803,63 @@ static BOOL DoBlend(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL 
     return TRUE;
 }
 
-static BOOL DoBlackness(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *mask, POINTL *mask_pos,
-                        BOOL invers_mask)
+static BOOL DoBlackness(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SURFOBJ *mask,
+                        POINTL *mask_pos, BOOL invers_mask)
 {
     QXLDrawable *drawable;
+    UINT32 width;
+    UINT32 height;
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
     ASSERT(pdev, pdev && area);
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_BLACKNESS, area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_BLACKNESS, area, clip, surface_id))) {
         return FALSE;
     }
+
+    width = area->right - area->left;
+    height = area->bottom - area->top;
 
     if (!QXLGetMask(pdev, drawable, &drawable->u.blackness.mask, mask, mask_pos, invers_mask,
-                    area->right - area->left, area->bottom - area->top)) {
+                    width, height, &drawable->surfaces_dest[0])) {
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;
     }
+
+ if (mask_pos) {
+        CopyRectPoint(&drawable->surfaces_rects[0], mask_pos, width, height);
+ }
 
     drawable->effect = mask ? QXL_EFFECT_BLEND : QXL_EFFECT_OPAQUE;
     PushDrawable(pdev, drawable);
     return TRUE;
 }
 
-static BOOL DoWhiteness(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *mask, POINTL *mask_pos,
-                        BOOL invers_mask)
+static BOOL DoWhiteness(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SURFOBJ *mask, 
+                        POINTL *mask_pos, BOOL invers_mask)
 {
     QXLDrawable *drawable;
+    UINT32 width;
+    UINT32 height;
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
     ASSERT(pdev, pdev && area);
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_WHITENESS, area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_WHITENESS, area, clip, surface_id))) {
         return FALSE;
     }
+
+    width = area->right - area->left;
+    height = area->bottom - area->top;
 
     if (!QXLGetMask(pdev, drawable, &drawable->u.whiteness.mask, mask, mask_pos, invers_mask,
-                    area->right - area->left, area->bottom - area->top)) {
+                    width, height, &drawable->surfaces_dest[0])) {
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;
+    }
+
+    if (mask_pos) {
+        CopyRectPoint(&drawable->surfaces_rects[0], mask_pos, width, height);
     }
 
     drawable->effect = mask ? QXL_EFFECT_BLEND : QXL_EFFECT_OPAQUE;
@@ -781,22 +867,31 @@ static BOOL DoWhiteness(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *mask, P
     return TRUE;
 }
 
-static BOOL DoInvers(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *mask, POINTL *mask_pos,
-                     BOOL invers_mask)
+static BOOL DoInvers(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SURFOBJ *mask, 
+                     POINTL *mask_pos, BOOL invers_mask)
 {
     QXLDrawable *drawable;
+    UINT32 width;
+    UINT32 height;
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
     ASSERT(pdev, pdev && area);
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_INVERS, area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_INVERS, area, clip, surface_id))) {
         return FALSE;
     }
 
+    width = area->right - area->left;
+    height = area->bottom - area->top;
+
     if (!QXLGetMask(pdev, drawable, &drawable->u.invers.mask, mask, mask_pos, invers_mask,
-                    area->right - area->left, area->bottom - area->top)) {
+                    width, height, &drawable->surfaces_dest[0])) {
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;
+    }
+
+    if (mask_pos) {
+        CopyRectPoint(&drawable->surfaces_rects[0], mask_pos, width, height);
     }
 
     drawable->effect = mask ? QXL_EFFECT_BLEND : QXL_EFFECT_REVERT_ON_DUP;
@@ -804,29 +899,40 @@ static BOOL DoInvers(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *mask, POIN
     return TRUE;
 }
 
-static BOOL DoROP3(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *src_rect,
-                   XLATEOBJ *color_trans, BRUSHOBJ *brush, POINTL *brush_pos, UINT8 rop3,
-                   SURFOBJ *mask, POINTL *mask_pos, BOOL invers_mask, ULONG scale_mode)
+static BOOL DoROP3(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SURFOBJ *src,
+                   RECTL *src_rect, XLATEOBJ *color_trans, BRUSHOBJ *brush, POINTL *brush_pos,
+                   UINT8 rop3, SURFOBJ *mask, POINTL *mask_pos, BOOL invers_mask, ULONG scale_mode)
 {
     QXLDrawable *drawable;
+    UINT32 width;
+    UINT32 height;
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
     ASSERT(pdev, pdev && area && brush && src_rect && src);
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_ROP3, area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_ROP3, area, clip, surface_id))) {
         return FALSE;
     }
 
+    width = area->right - area->left;
+    height = area->bottom - area->top;
+
     drawable->u.rop3.scale_mode = GdiScaleModeToQxl(scale_mode);
     CopyRect(&drawable->u.rop3.src_area, src_rect);
-    if (!QXLGetBrush(pdev, drawable, &drawable->u.rop3.brush, brush, brush_pos) ||
+    if (!QXLGetBrush(pdev, drawable, &drawable->u.rop3.brush, brush, brush_pos,
+                     &drawable->surfaces_dest[0], &drawable->surfaces_rects[0]) ||
         !QXLGetMask(pdev, drawable, &drawable->u.rop3.mask, mask, mask_pos, invers_mask,
-                    area->right - area->left, area->bottom - area->top) ||
+                    width, height, &drawable->surfaces_dest[1]) ||
         !GetBitmap(pdev, drawable, &drawable->u.rop3.src_bitmap, src, &drawable->u.rop3.src_area,
-                   color_trans, TRUE)) {
+                   color_trans, TRUE, &drawable->surfaces_dest[2])) {
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;
     }
+
+    if (mask_pos) {
+        CopyRectPoint(&drawable->surfaces_rects[1], mask_pos, width, height);
+    }
+    CopyRect(&drawable->surfaces_rects[2], src_rect);
 
     drawable->u.rop3.rop3 = rop3;
     drawable->effect = mask ? QXL_EFFECT_BLEND : QXL_EFFECT_BLEND; //for now
@@ -834,7 +940,7 @@ static BOOL DoROP3(PDev *pdev, RECTL *area, CLIPOBJ *clip, SURFOBJ *src, RECTL *
     return TRUE;
 }
 
-static SURFOBJ *Copy16bppArea(PDev *pdev, RECTL *area)
+static SURFOBJ *Copy16bppArea(PDev *pdev, SURFOBJ *src, RECTL *area)
 {
     SIZEL  size;
     HSURF bitmap;
@@ -843,6 +949,9 @@ static SURFOBJ *Copy16bppArea(PDev *pdev, RECTL *area)
     UINT8 *dest_end_line;
     LONG src_stride;
     UINT8 *src_line;
+    SurfaceInfo *surface;
+
+    surface = (SurfaceInfo *)src->dhsurf;
 
     size.cx = area->right - area->left;
     size.cy = area->bottom - area->top;
@@ -864,8 +973,9 @@ static SURFOBJ *Copy16bppArea(PDev *pdev, RECTL *area)
 
     dest_line = surf_obj->pvScan0;
     dest_end_line = dest_line + surf_obj->lDelta * surf_obj->sizlBitmap.cy;
-    src_stride = pdev->draw_surf->lDelta;
-    src_line = (UINT8 *)pdev->draw_surf->pvScan0 + area->top * src_stride + (area->left << 2);
+    src_stride = surface->draw_area.surf_obj->lDelta;
+    src_line = (UINT8 *)surface->draw_area.surf_obj->pvScan0 + area->top * src_stride +
+                        (area->left << 2);
 
     for (; dest_line != dest_end_line; dest_line += surf_obj->lDelta, src_line += src_stride) {
         UINT16 *dest = (UINT16 *)dest_line;
@@ -885,13 +995,16 @@ error:
 
 }
 
-static BOOL BitBltFromDev(PDev *pdev, SURFOBJ *dest, SURFOBJ *mask, CLIPOBJ *clip,
+static BOOL BitBltFromDev(PDev *pdev, SURFOBJ *src, SURFOBJ *dest, SURFOBJ *mask, CLIPOBJ *clip,
                    XLATEOBJ *color_trans, RECTL *dest_rect, POINTL src_pos,
                    POINTL *mask_pos, BRUSHOBJ *brush, POINTL *brush_pos, ROP4 rop4)
 {
     RECTL area;
     SURFOBJ* surf_obj;
     BOOL ret;
+    UINT32 surface_id;
+
+    surface_id = GetSurfaceId(src);
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
 
@@ -900,17 +1013,20 @@ static BOOL BitBltFromDev(PDev *pdev, SURFOBJ *dest, SURFOBJ *mask, CLIPOBJ *cli
     area.left = MAX(0, src_pos.x);
     area.right = MIN(src_pos.x + dest_rect->right - dest_rect->left, pdev->resolution.cx);
 
-    UpdateArea(pdev, &area);
+    UpdateArea(pdev, &area, surface_id);
 
     if (pdev->bitmap_format == BMF_16BPP) {
-        surf_obj = Copy16bppArea(pdev, &area);
+        surf_obj = Copy16bppArea(pdev, src, &area);
         if (!surf_obj) {
             return FALSE;
         }
         src_pos.y = src_pos.y - area.top;
         src_pos.x = src_pos.x - area.left;
     } else {
-        surf_obj = pdev->draw_surf;
+        SurfaceInfo *surface;
+
+        surface = (SurfaceInfo *)src->dhsurf;
+        surf_obj = surface->draw_area.surf_obj;
     }
 
     if (rop4 == 0xcccc) {
@@ -930,9 +1046,10 @@ static BOOL BitBltFromDev(PDev *pdev, SURFOBJ *dest, SURFOBJ *mask, CLIPOBJ *cli
     return ret;
 }
 
-BOOL _inline __DrvBitBlt(PDev *pdev, RECTL *dest_rect, CLIPOBJ *clip, SURFOBJ *src, RECTL *src_rect,
-                         XLATEOBJ *color_trans, BRUSHOBJ *brush, POINTL *brush_pos, ULONG rop3,
-                         SURFOBJ *mask, POINTL *mask_pos, BOOL invers_mask, ULONG scale_mode)
+BOOL _inline __DrvBitBlt(PDev *pdev, UINT32 surface_id, RECTL *dest_rect, CLIPOBJ *clip,
+                        SURFOBJ  *src, RECTL *src_rect, XLATEOBJ *color_trans, BRUSHOBJ *brush, 
+                        POINTL *brush_pos, ULONG rop3, SURFOBJ *mask, POINTL *mask_pos,
+                        BOOL invers_mask, ULONG scale_mode)
 {
     ROP3Info *rop_info = &rops3[rop3];
 
@@ -940,26 +1057,27 @@ BOOL _inline __DrvBitBlt(PDev *pdev, RECTL *dest_rect, CLIPOBJ *clip, SURFOBJ *s
 
     switch (rop_info->method_type) {
     case ROP3_TYPE_FILL:
-        return DoFill(pdev, dest_rect, clip, brush, brush_pos, rop_info, mask, mask_pos,
+        return DoFill(pdev, surface_id, dest_rect, clip, brush, brush_pos, rop_info, mask, mask_pos,
                       invers_mask);
     case ROP3_TYPE_OPAQUE:
-        return DoOpaque(pdev, dest_rect, clip, src, src_rect, color_trans, brush, brush_pos,
-                            rop_info->method_data, mask, mask_pos, invers_mask, scale_mode);
+        return DoOpaque(pdev, surface_id, dest_rect, clip, src, src_rect, color_trans, brush,
+                        brush_pos, rop_info->method_data, mask, mask_pos, invers_mask, scale_mode);
     case ROP3_TYPE_COPY:
-        return DoCopy(pdev, dest_rect, clip, src, src_rect, color_trans, rop_info->method_data,
-                      mask, mask_pos, invers_mask, scale_mode);
+        return DoCopy(pdev, surface_id, dest_rect, clip, src, src_rect, color_trans,
+                      rop_info->method_data, mask, mask_pos, invers_mask, scale_mode);
     case ROP3_TYPE_BLEND:
-        return DoBlend(pdev, dest_rect, clip, src, src_rect, color_trans, rop_info, mask, mask_pos,
-                       invers_mask, scale_mode);
+        return DoBlend(pdev, surface_id, dest_rect, clip, src, src_rect, color_trans, rop_info,
+                       mask, mask_pos, invers_mask, scale_mode);
     case ROP3_TYPE_BLACKNESS:
-        return DoBlackness(pdev, dest_rect, clip, mask, mask_pos, invers_mask);
+        return DoBlackness(pdev, surface_id, dest_rect, clip, mask, mask_pos, invers_mask);
     case ROP3_TYPE_WHITENESS:
-        return DoWhiteness(pdev, dest_rect, clip, mask, mask_pos, invers_mask);
+        return DoWhiteness(pdev, surface_id, dest_rect, clip, mask, mask_pos, invers_mask);
     case ROP3_TYPE_INVERS:
-        return DoInvers(pdev, dest_rect, clip, mask, mask_pos, invers_mask);
+        return DoInvers(pdev, surface_id, dest_rect, clip, mask, mask_pos, invers_mask);
     case ROP3_TYPE_ROP3:
-        return DoROP3(pdev, dest_rect, clip, src, src_rect, color_trans, brush, brush_pos,
-                      (UINT8)rop_info->method_data, mask, mask_pos, invers_mask, scale_mode);
+        return DoROP3(pdev, surface_id, dest_rect, clip, src, src_rect, color_trans, brush,
+                      brush_pos, (UINT8)rop_info->method_data, mask, mask_pos, invers_mask,
+                      scale_mode);
     case ROP3_TYPE_NOP:
         return TRUE;
     default:
@@ -1055,14 +1173,20 @@ static QXLRESULT BitBltCommon(PDev *pdev, SURFOBJ *dest, SURFOBJ *src, SURFOBJ *
     SURFOBJ *brush_mask = NULL;
 #endif
     QXLRESULT res;
+    UINT32 surface_id;
+
+    ASSERT(pdev, dest->iType != STYPE_BITMAP);
+
+    surface_id = GetSurfaceId(dest);
 
     if (!PrepareBrush(brush)) {
         return QXL_FAILED;
     }
 
     if ((rop3 = rop4 & 0xff) == (second_rop3 = ((rop4 >> 8) & 0xff))) {
-        return __DrvBitBlt(pdev, dest_rect, clip, src, src_rect, color_trans, brush, brush_pos,
-                           rop3, NULL, NULL, FALSE, scale_mode) ? QXL_SUCCESS : QXL_FAILED;
+        return __DrvBitBlt(pdev, surface_id, dest_rect, clip, src, src_rect, color_trans, brush,
+                           brush_pos, rop3, NULL, NULL, FALSE, scale_mode) ? QXL_SUCCESS :
+                           QXL_FAILED;
     }
 
     if (!mask) {
@@ -1080,15 +1204,17 @@ static QXLRESULT BitBltCommon(PDev *pdev, SURFOBJ *dest, SURFOBJ *src, SURFOBJ *
     }
     DEBUG_PRINT((pdev, 5, "%s: mask, rop4 is 0x%x\n", __FUNCTION__, rop4));
     ASSERT(pdev, mask_pos);
-    res = (__DrvBitBlt(pdev, dest_rect, clip, src, src_rect, color_trans, brush, brush_pos, rop3,
-                      mask, mask_pos, FALSE, scale_mode) &&
-          __DrvBitBlt(pdev, dest_rect, clip, src, src_rect, color_trans, brush, brush_pos,
-                      second_rop3, mask, mask_pos, TRUE, scale_mode)) ? QXL_SUCCESS : QXL_FAILED;
+    res = (__DrvBitBlt(pdev, surface_id, dest_rect, clip, src, src_rect, color_trans, brush,
+                       brush_pos, rop3, mask, mask_pos, FALSE, scale_mode) &&
+          __DrvBitBlt(pdev, surface_id, dest_rect, clip, src, src_rect, color_trans, brush,
+                      brush_pos, second_rop3, mask, mask_pos, TRUE, scale_mode)) ? QXL_SUCCESS :
+                      QXL_FAILED;
 #ifdef SUPPORT_BRUSH_AS_MASK
     if (brush_mask) {
         //free brush_mask;
     }
 #endif
+
     return res;
 }
 
@@ -1151,8 +1277,6 @@ static QXLRESULT _BitBlt(PDev *pdev, SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask,
     }
 #endif
 
-    ASSERT(pdev, dest->iType == STYPE_BITMAP || dest->hsurf == pdev->surf);
-    ASSERT(pdev, !src || src->iType == STYPE_BITMAP || src->hsurf == pdev->surf);
     ASSERT(pdev, dest_rect && dest_rect->left < dest_rect->right &&
            dest_rect->top < dest_rect->bottom);
 
@@ -1169,12 +1293,14 @@ static QXLRESULT _BitBlt(PDev *pdev, SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask,
         local_pos.y = src_pos->y + (area.top - dest_rect->top);
 
         if (dest->iType == STYPE_BITMAP) {
-            return BitBltFromDev(pdev, dest, mask, clip, color_trans, &area, local_pos, mask_pos,
-                                 brush, brush_pos, rop4) ? QXL_SUCCESS : QXL_FAILED;
+            return BitBltFromDev(pdev, src, dest, mask, clip, color_trans, &area, local_pos,
+                                 mask_pos, brush, brush_pos, rop4) ? QXL_SUCCESS : QXL_FAILED;
         }
 
-        if (src->iType != STYPE_BITMAP && rop4 == 0xcccc) { //SRCCOPY no mask
-            return DoCopyBits(pdev, clip, &area, &local_pos) ? QXL_SUCCESS : QXL_FAILED;
+        if (src->iType != STYPE_BITMAP
+            && GetSurfaceId(src) == GetSurfaceId(dest) && rop4 == 0xcccc) { //SRCCOPY no mask
+            return DoCopyBits(pdev, GetSurfaceId(src), clip, &area, &local_pos) ?
+                              QXL_SUCCESS : QXL_FAILED;
         }
 
         src_rect.left = local_pos.x;
@@ -1185,6 +1311,7 @@ static QXLRESULT _BitBlt(PDev *pdev, SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask,
     } else {
         src_rect_ptr = NULL;
     }
+
     return BitBltCommon(pdev, dest, src, mask, clip, color_trans, &area, src_rect_ptr,
                         mask_pos, brush, brush_pos, rop4, COLORONCOLOR, NULL);
 }
@@ -1197,13 +1324,12 @@ BOOL APIENTRY DrvBitBlt(SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask, CLIPOBJ *cli
     QXLRESULT res;
 
     if (dest->iType == STYPE_BITMAP) {
-        ASSERT(NULL, src && src->iType != STYPE_BITMAP && src->dhpdev && src_pos);
         pdev = (PDev *)src->dhpdev;
     } else {
-        ASSERT(NULL, dest->dhpdev);
         pdev = (PDev *)dest->dhpdev;
-        CountCall(pdev, CALL_COUNTER_BIT_BLT);
     }
+
+    CountCall(pdev, CALL_COUNTER_BIT_BLT);
 
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
     if ((res = _BitBlt(pdev, dest, src, mask, clip, color_trans, dest_rect, src_pos, mask_pos,
@@ -1216,6 +1342,7 @@ BOOL APIENTRY DrvBitBlt(SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask, CLIPOBJ *cli
         return FALSE;
 
     }
+
     DEBUG_PRINT((pdev, 4, "%s: done\n", __FUNCTION__));
     return TRUE;
 }
@@ -1226,13 +1353,12 @@ BOOL APIENTRY DrvCopyBits(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip,
     PDev *pdev;
 
     if (dest->iType == STYPE_BITMAP) {
-        ASSERT(NULL, src && src->iType != STYPE_BITMAP && src->dhpdev && src_pos);
         pdev = (PDev *)src->dhpdev;
     } else {
-        ASSERT(NULL, dest->dhpdev);
         pdev = (PDev *)dest->dhpdev;
-        CountCall(pdev, CALL_COUNTER_BIT_BLT);
     }
+
+    CountCall(pdev, CALL_COUNTER_BIT_BLT);
 
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
 
@@ -1389,13 +1515,12 @@ BOOL APIENTRY DrvStretchBltROP(SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask, CLIPO
     PDev *pdev;
     QXLRESULT res;
 
-    if (!src || src->iType != STYPE_BITMAP) {
-        ASSERT(NULL, src->dhpdev);
+    if (src && src->iType != STYPE_BITMAP) {
         pdev = (PDev *)src->dhpdev;
-        goto punt;
+    } else {
+        pdev = (PDev *)dest->dhpdev;
     }
 
-    ASSERT(NULL, dest && dest->iType != STYPE_BITMAP && dest->dhpdev);
     pdev = (PDev *)dest->dhpdev;
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
     CountCall(pdev, CALL_COUNTER_STRETCH_BLT_ROP);
@@ -1425,11 +1550,10 @@ BOOL APIENTRY DrvStretchBlt(SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask, CLIPOBJ 
 
     ASSERT(NULL, src);
     if (src->iType != STYPE_BITMAP) {
-        ASSERT(NULL, src->dhpdev);
         pdev = (PDev *)src->dhpdev;
-        goto punt;
+    } else {
+        pdev = (PDev *)dest->dhpdev;
     }
-    ASSERT(NULL, dest && dest->iType != STYPE_BITMAP && dest->dhpdev);
     pdev = (PDev *)dest->dhpdev;
 
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
@@ -1522,11 +1646,11 @@ BOOL APIENTRY DrvAlphaBlend(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLATEOBJ
 
     ASSERT(NULL, src && dest);
     if (src->iType != STYPE_BITMAP) {
-        ASSERT(NULL, src->dhpdev);
         pdev = (PDev *)src->dhpdev;
-        goto punt;
+    } else {
+        pdev = (PDev *)dest->dhpdev;
     }
-    ASSERT(NULL, dest->iType != STYPE_BITMAP && dest->dhpdev);
+
     pdev = (PDev *)dest->dhpdev;
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
 
@@ -1562,7 +1686,7 @@ BOOL APIENTRY DrvAlphaBlend(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLATEOBJ
         return TRUE;
     }
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_ALPHA_BLEND, &area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_ALPHA_BLEND, &area, clip, GetSurfaceId(dest)))) {
         DEBUG_PRINT((pdev, 0, "%s: Drawable failed\n", __FUNCTION__));
         return FALSE;
     }
@@ -1571,18 +1695,21 @@ BOOL APIENTRY DrvAlphaBlend(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLATEOBJ
         src_rect = &local_src;
     }
 
+    CopyRect(&drawable->surfaces_rects[0], src_rect);
     CopyRect(&drawable->u.alpha_blend.src_area, src_rect);
     if (bland->BlendFunction.AlphaFormat == AC_SRC_ALPHA) {
         ASSERT(pdev, src->iBitmapFormat == BMF_32BPP);
         if (!QXLGetAlphaBitmap(pdev, drawable, &drawable->u.alpha_blend.src_bitmap, src,
-                               &drawable->u.alpha_blend.src_area)) {
+                               &drawable->u.alpha_blend.src_area,
+                               &drawable->surfaces_dest[0])) {
             DEBUG_PRINT((pdev, 0, "%s: QXLGetAlphaBitmap failed\n", __FUNCTION__));
             ReleaseOutput(pdev, drawable->release_info.id);
             return FALSE;
         }
     } else {
         if (!QXLGetBitmap(pdev, drawable, &drawable->u.alpha_blend.src_bitmap, src,
-                        &drawable->u.alpha_blend.src_area, color_trans, NULL, TRUE)) {
+                        &drawable->u.alpha_blend.src_area, color_trans, NULL, TRUE,
+                        &drawable->surfaces_dest[0])) {
             DEBUG_PRINT((pdev, 0, "%s: QXLGetBitmap failed\n", __FUNCTION__));
             ReleaseOutput(pdev, drawable->release_info.id);
             return FALSE;
@@ -1613,11 +1740,11 @@ BOOL APIENTRY DrvTransparentBlt(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLAT
     if (src->iType != STYPE_BITMAP) {
         ASSERT(NULL, src->dhpdev);
         pdev = (PDev *)src->dhpdev;
-        goto punt;
+    } else {
+        ASSERT(NULL, dest->dhpdev);
+        pdev = (PDev *)dest->dhpdev;
     }
 
-    ASSERT(NULL, dest->iType != STYPE_BITMAP && dest->dhpdev);
-    pdev = (PDev *)dest->dhpdev;
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
 
     ASSERT(pdev, src_rect && src_rect->left < src_rect->right &&
@@ -1643,7 +1770,7 @@ BOOL APIENTRY DrvTransparentBlt(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLAT
         return TRUE;
     }
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_TRANSPARENT, &area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_TRANSPARENT, &area, clip, GetSurfaceId(dest)))) {
         DEBUG_PRINT((pdev, 0, "%s: Drawable failed\n", __FUNCTION__));
         return FALSE;
     }
@@ -1653,8 +1780,10 @@ BOOL APIENTRY DrvTransparentBlt(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLAT
     }
 
     CopyRect(&drawable->u.transparent.src_area, src_rect);
+    CopyRect(&drawable->surfaces_rects[0], src_rect);
     if (!QXLGetBitmap(pdev, drawable, &drawable->u.transparent.src_bitmap, src,
-                      &drawable->u.transparent.src_area, color_trans, NULL, TRUE)) {
+                      &drawable->u.transparent.src_area, color_trans, NULL, TRUE,
+                      &drawable->surfaces_dest[0])) {
         DEBUG_PRINT((pdev, 0, "%s: QXLGetBitmap failed\n", __FUNCTION__));
         ReleaseOutput(pdev, drawable->release_info.id);
         return FALSE;

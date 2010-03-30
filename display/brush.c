@@ -315,7 +315,8 @@ BOOL APIENTRY DrvRealizeBrush(BRUSHOBJ *brush, SURFOBJ *target, SURFOBJ *pattern
 
 
 static _inline BOOL GetPattern(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *pattern,
-                               InternalBrush *brush)
+                               InternalBrush *brush, INT32 *surface_dest,
+                               SpiceRect *surface_rect)
 {
     HSURF hsurf;
     SURFOBJ *surf_obj;
@@ -342,7 +343,9 @@ static _inline BOOL GetPattern(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *p
     area.right = brush->size.cx;
     area.bottom = brush->size.cy;
 
-    if (!QXLGetBitmap(pdev, drawable, pattern, surf_obj, &area, NULL, &key, TRUE)) {
+    CopyRect(surface_rect, &area);
+
+    if (!QXLGetBitmap(pdev, drawable, pattern, surf_obj, &area, NULL, &key, TRUE, surface_dest)) {
         goto error_2;
     }
 
@@ -361,7 +364,8 @@ error_1:
 
 
 BOOL QXLGetBrush(PDev *pdev, QXLDrawable *drawable, SpiceBrush *qxl_brush,
-                            BRUSHOBJ *brush, POINTL *brush_pos)
+                 BRUSHOBJ *brush, POINTL *brush_pos, INT32 *surface_dest,
+                 SpiceRect *surface_rect)
 {
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
     ASSERT(pdev, brush);
@@ -377,7 +381,8 @@ BOOL QXLGetBrush(PDev *pdev, QXLDrawable *drawable, SpiceBrush *qxl_brush,
         qxl_brush->type = SPICE_BRUSH_TYPE_PATTERN;
         qxl_brush->u.pattern.pos.x = brush_pos->x;
         qxl_brush->u.pattern.pos.y = brush_pos->y;
-        if (!GetPattern(pdev, drawable, &qxl_brush->u.pattern.pat, brush->pvRbrush)) {
+        if (!GetPattern(pdev, drawable, &qxl_brush->u.pattern.pat, brush->pvRbrush,
+                        surface_dest, surface_rect)) {
             return FALSE;
         }
     } else {

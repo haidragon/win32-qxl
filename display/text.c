@@ -20,6 +20,7 @@
 #include "utils.h"
 #include "res.h"
 #include "rop.h"
+#include "surface.h"
 
 BOOL APIENTRY DrvTextOut(SURFOBJ *surf, STROBJ *str, FONTOBJ *font, CLIPOBJ *clip,
                          RECTL *ignored, RECTL *opaque_rect,
@@ -31,11 +32,14 @@ BOOL APIENTRY DrvTextOut(SURFOBJ *surf, STROBJ *str, FONTOBJ *font, CLIPOBJ *cli
     ROP3Info *back_rop;
     PDev* pdev;
     RECTL area;
+    UINT32 surface_id;
 
     if (!(pdev = (PDev *)surf->dhpdev)) {
         DEBUG_PRINT((NULL, 0, "%s: err no pdev\n", __FUNCTION__));
         return FALSE;
     }
+
+    surface_id = GetSurfaceId(surf);
 
     CountCall(pdev, CALL_COUNTER_TEXT_OUT);
 
@@ -62,13 +66,14 @@ BOOL APIENTRY DrvTextOut(SURFOBJ *surf, STROBJ *str, FONTOBJ *font, CLIPOBJ *cli
         }
     }
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_TEXT, &area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_TEXT, &area, clip, surface_id))) {
         return FALSE;
     }
 
     if (opaque_rect) {
         ASSERT(pdev, back_brash && brushs_origin);
-        if (!QXLGetBrush(pdev, drawable, &drawable->u.text.back_brush, back_brash, brushs_origin)) {
+        if (!QXLGetBrush(pdev, drawable, &drawable->u.text.back_brush, back_brash, brushs_origin,
+                         &drawable->surfaces_dest[0], &drawable->surfaces_rects[0])) {
             goto error;
         }
         CopyRect(&drawable->u.text.back_area, &area);
@@ -87,7 +92,8 @@ BOOL APIENTRY DrvTextOut(SURFOBJ *surf, STROBJ *str, FONTOBJ *font, CLIPOBJ *cli
     if (!((fore_rop->flags | back_rop->flags) & ROP3_BRUSH)) {
         drawable->u.stroke.brush.type = SPICE_BRUSH_TYPE_NONE;
     } else if (!QXLGetBrush(pdev, drawable, &drawable->u.text.fore_brush, fore_brush,
-                            brushs_origin)) {
+                            brushs_origin, &drawable->surfaces_dest[1],
+                            &drawable->surfaces_rects[1])) {
         DEBUG_PRINT((pdev, 0, "%s: get brush failed\n", __FUNCTION__));
         goto error;
     }

@@ -35,6 +35,7 @@
 #include "mspace.h"
 #include "res.h"
 #include "surface.h"
+#include "dd.h"
 
 #define DEVICE_NAME L"qxldd"
 
@@ -61,6 +62,12 @@ static DRVFN drv_calls[] = {
     {INDEX_DrvStretchBltROP, (PFN)DrvStretchBltROP},
     {INDEX_DrvTransparentBlt, (PFN)DrvTransparentBlt},
     {INDEX_DrvAlphaBlend, (PFN)DrvAlphaBlend},
+    {INDEX_DrvCreateDeviceBitmap, (PFN)DrvCreateDeviceBitmap},
+    {INDEX_DrvDeleteDeviceBitmap, (PFN)DrvDeleteDeviceBitmap},
+
+    {INDEX_DrvGetDirectDrawInfo, (PFN)DrvGetDirectDrawInfo},
+    {INDEX_DrvEnableDirectDraw, (PFN)DrvEnableDirectDraw},
+    {INDEX_DrvDisableDirectDraw, (PFN)DrvDisableDirectDraw},
 
 #ifdef CALL_TEST
     {INDEX_DrvFillPath, (PFN)DrvFillPath},
@@ -512,9 +519,14 @@ DHPDEV DrvEnablePDEV(DEVMODEW *dev_mode, PWSTR ignore1, ULONG ignore2, HSURF *ig
         goto err3;
     }
 
+    if (!(pdev->cmd_sem = EngCreateSemaphore())) {
+        DEBUG_PRINT((NULL, 0, "%s: create cmd sem failed\n", __FUNCTION__));
+        goto err4;
+    }
+
     if (!ResInit(pdev)) {
         DEBUG_PRINT((NULL, 0, "%s: init res failed\n", __FUNCTION__));
-        goto err4;
+        goto err5;
     }
 
     RtlCopyMemory(dev_caps, &gdi_info, dev_caps_size);
@@ -523,6 +535,8 @@ DHPDEV DrvEnablePDEV(DEVMODEW *dev_mode, PWSTR ignore1, ULONG ignore2, HSURF *ig
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     return(DHPDEV)pdev;
 
+err5:
+    EngDeleteSemaphore(pdev->cmd_sem);
 err4:
     EngDeleteSemaphore(pdev->print_sem);
 
@@ -543,8 +557,10 @@ VOID DrvDisablePDEV(DHPDEV in_pdev)
     PDev* pdev = (PDev*)in_pdev;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
+    EngFreeMem(pdev->surfaces_info);
     ResDestroy(pdev);
     DestroyPalette(pdev);
+    EngDeleteSemaphore(pdev->cmd_sem);
     EngDeleteSemaphore(pdev->malloc_sem);
     EngDeleteSemaphore(pdev->print_sem);
     EngFreeMem(pdev);
@@ -591,6 +607,12 @@ static void DestroyPrimarySurface(PDev *pdev)
     WRITE_PORT_UCHAR(pdev->destroy_primary_port, 0);
 }
 
+static void DestroyAllSurfaces(PDev *pdev)
+{
+    HideMouse(pdev);
+    WRITE_PORT_UCHAR(pdev->destroy_all_surfaces_port, 0);
+}
+
 BOOL SetHardwareMode(PDev *pdev)
 {
     VIDEO_MODE_INFORMATION video_info;
@@ -623,6 +645,49 @@ static VOID UpdateMainSlot(PDev *pdev, MemSlot *slot)
 
     pdev->va_slot_mask = (~(QXLPHYSICAL)0) >> (pdev->slot_id_bits + pdev->slot_gen_bits);
 }
+
+static void RemoveVRamSlot(PDev *pdev)
+{
+    WRITE_PORT_UCHAR(pdev->memslot_del_port, pdev->dd_mem_slot);
+    pdev->dd_slot_initialized = FALSE;
+}
+
+static BOOLEAN CreateVRamSlot(PDev *pdev)
+{
+    QXLMemSlot *slot;
+    UINT64 high_bits;
+    UINT8 slot_id = pdev->main_mem_slot + 1;
+
+    if (slot_id >= pdev->num_mem_slot) {
+        return FALSE;
+    }
+
+    pdev->va_slot_mask = (~(QXLPHYSICAL)0) >> (pdev->slot_id_bits + pdev->slot_gen_bits);
+
+
+    *pdev->ram_slot_start = pdev->fb_phys;
+    *pdev->ram_slot_end = pdev->fb_phys + pdev->fb_size;
+
+    WRITE_PORT_UCHAR(pdev->memslot_add_port, slot_id);
+
+    pdev->dd_mem_slot = slot_id;
+
+    pdev->mem_slots[slot_id].slot.generation = *pdev->slots_generation;
+    pdev->mem_slots[slot_id].slot.start_phys_addr = pdev->fb_phys;
+    pdev->mem_slots[slot_id].slot.end_phys_addr = pdev->fb_phys + pdev->fb_size;
+    pdev->mem_slots[slot_id].slot.start_virt_addr = (UINT64)pdev->fb;
+    pdev->mem_slots[slot_id].slot.end_virt_addr = (UINT64)pdev->fb + pdev->fb_size;
+
+    high_bits = slot_id << pdev->slot_gen_bits;
+    high_bits |= pdev->mem_slots[slot_id].slot.generation;
+    high_bits <<= (64 - (pdev->slot_gen_bits + pdev->slot_id_bits));
+    pdev->mem_slots[slot_id].high_bits = high_bits;
+
+    pdev->dd_slot_initialized = TRUE;
+
+    return TRUE;
+}
+
 
 BOOL PrepareHardware(PDev *pdev)
 {
@@ -671,6 +736,7 @@ BOOL PrepareHardware(PDev *pdev)
 
     pdev->update_area_port = dev_info.update_area_port;
     pdev->update_area = dev_info.update_area;
+    pdev->update_surface = dev_info.update_surface;
 
     pdev->mm_clock = dev_info.mm_clock;
 
@@ -680,6 +746,14 @@ BOOL PrepareHardware(PDev *pdev)
     pdev->log_buf = dev_info.log_buf;
     pdev->log_level = dev_info.log_level;
 
+    pdev->n_surfaces = dev_info.n_surfaces;
+    if (!(pdev->surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
+                                                           sizeof(SurfaceInfo) *
+                                                           pdev->n_surfaces, ALLOC_TAG))) {
+        DEBUG_PRINT((NULL, 0, "%s: surfaces_info alloc failed\n", __FUNCTION__));
+        return FALSE;
+    }
+
     pdev->mem_slots = EngAllocMem(FL_ZERO_MEMORY, sizeof(PMemSlot) * dev_info.num_mem_slot,
                                   ALLOC_TAG);
     if (!pdev->mem_slots) {
@@ -687,6 +761,9 @@ BOOL PrepareHardware(PDev *pdev)
         return FALSE;
     }
 
+    pdev->slots_generation = dev_info.slots_generation;
+    pdev->ram_slot_start = dev_info.ram_slot_start;
+    pdev->ram_slot_end = dev_info.ram_slot_end;
     pdev->slot_id_bits = dev_info.slot_id_bits;
     pdev->slot_gen_bits = dev_info.slot_gen_bits;
     pdev->main_mem_slot = dev_info.main_mem_slot_id;
@@ -706,8 +783,13 @@ BOOL PrepareHardware(PDev *pdev)
                  video_mem_Info.FrameBufferBase, video_mem_Info.FrameBufferLength));
     pdev->fb = (BYTE*)video_mem_Info.FrameBufferBase;
     pdev->fb_size = video_mem_Info.FrameBufferLength;
+    pdev->fb_phys = dev_info.fb_phys;
 
     pdev->destroy_surface_wait_port = dev_info.destroy_surface_wait_port;
+    pdev->destroy_all_surfaces_port = dev_info.destroy_all_surfaces_port;
+    pdev->memslot_add_port = dev_info.memslot_add_port;
+    pdev->memslot_del_port = dev_info.memslot_del_port;
+
     pdev->create_primary_port = dev_info.create_primary_port;
     pdev->destroy_primary_port = dev_info.destroy_primary_port;
 
@@ -717,6 +799,10 @@ BOOL PrepareHardware(PDev *pdev)
     pdev->primary_surface_create = dev_info.primary_surface_create;
 
     pdev->dev_id = dev_info.dev_id;
+
+    pdev->dd_initialized = FALSE;
+
+    CreateVRamSlot(pdev);
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit: 0x%lx %ul\n", __FUNCTION__, pdev,
                  pdev->fb, pdev->fb_size));
@@ -746,7 +832,7 @@ static VOID UnmapFB(PDev *pdev)
     }
 }
 
-VOID EnableQXLSurface(PDev *pdev)
+VOID EnableQXLPrimarySurface(PDev *pdev)
 {
     UINT32 depth;
 
@@ -777,7 +863,6 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
     DWORD length;
     QXLPHYSICAL phys_mem;
     UINT8 *base_mem;
-    DrawArea drawarea;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, in_pdev));
 
@@ -788,18 +873,11 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
     InitResources(pdev);
 
     if (!(surf = (HSURF)CreateDeviceBitmap(pdev, pdev->resolution, pdev->bitmap_format, &phys_mem,
-                                           &base_mem, DEVICE_BITMAP_ALLOCATION_TYPE_SURF0))) {
+                                           &base_mem, 0, DEVICE_BITMAP_ALLOCATION_TYPE_SURF0))) {
         DEBUG_PRINT((NULL, 0, "%s: create device surface failed, 0x%lx\n",
                      __FUNCTION__, pdev));
         goto err;
     }
-
-    if (!CreateDrawArea(pdev, &drawarea, base_mem, pdev->resolution.cx, pdev->resolution.cy)) {
-        goto err;
-    }
-
-    pdev->draw_bitmap = drawarea.bitmap;
-    pdev->draw_surf = drawarea.surf_obj;
 
     DEBUG_PRINT((NULL, 1, "%s: EngModifySurface(0x%lx, 0x%lx, 0, MS_NOTSYSTEMMEMORY, "
                  "0x%lx, 0x%lx, %lu, NULL)\n",
@@ -814,7 +892,7 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
     pdev->surf_phys = phys_mem;
     pdev->surf_base = base_mem;
 
-    EnableQXLSurface(pdev);
+    EnableQXLPrimarySurface(pdev);
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
     return surf;
@@ -825,7 +903,7 @@ err:
     return NULL;
 }
 
-VOID DisableQXLSurface(PDev *pdev)
+VOID DisableQXLPrimarySurface(PDev *pdev)
 {
     DrawArea drawarea;
 
@@ -836,6 +914,11 @@ VOID DisableQXLSurface(PDev *pdev)
     }
 }
 
+VOID DisableQXLAllSurfaces(PDev *pdev)
+{
+    DestroyAllSurfaces(pdev);
+}
+
 VOID DrvDisableSurface(DHPDEV in_pdev)
 {
     PDev *pdev = (PDev*)in_pdev;
@@ -843,12 +926,13 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
-    DisableQXLSurface(pdev);
+    DisableQXLPrimarySurface(pdev);
+    //DisableQXLAllSurfaces(pdev);
 
     UnmapFB(pdev);
 
     if (pdev->surf) {
-        DeleteDeviceBitmap(pdev->surf);
+        DeleteDeviceBitmap(pdev, 0, DEVICE_BITMAP_ALLOCATION_TYPE_SURF0);
         pdev->surf = NULL;
     }
 
@@ -858,6 +942,11 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
         FreeDrawArea(&drawarea);
         pdev->draw_surf = NULL;
         pdev->draw_bitmap = NULL;
+    }
+
+    if (pdev->surfaces_info) {
+        EngFreeMem(pdev->surfaces_info);
+        pdev->surfaces_info = NULL;
     }
 
     if (pdev->mem_slots) {
@@ -875,9 +964,11 @@ BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     if (enable) {
         InitResources(pdev);
-        EnableQXLSurface(pdev);
+        EnableQXLPrimarySurface(pdev);
+        CreateVRamSlot(pdev);
     } else {
-        DisableQXLSurface(pdev);
+        DisableQXLPrimarySurface(pdev);
+        RemoveVRamSlot(pdev);
     }
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit TRUE\n", __FUNCTION__, pdev));
     return TRUE;
@@ -1217,7 +1308,7 @@ BOOL APIENTRY DrvStrokePath(SURFOBJ *surf, PATHOBJ *path, CLIPOBJ *clip, XFORMOB
         }
     }
 
-    if (!(drawable = Drawable(pdev, QXL_DRAW_STROKE, &area, clip))) {
+    if (!(drawable = Drawable(pdev, QXL_DRAW_STROKE, &area, clip, GetSurfaceId(surf)))) {
         return FALSE;
     }
 
@@ -1226,7 +1317,8 @@ BOOL APIENTRY DrvStrokePath(SURFOBJ *surf, PATHOBJ *path, CLIPOBJ *clip, XFORMOB
 
     if (!((fore_rop->flags | back_rop->flags) & ROP3_BRUSH)) {
         drawable->u.stroke.brush.type = SPICE_BRUSH_TYPE_NONE;
-    } else if (!QXLGetBrush(pdev, drawable, &drawable->u.stroke.brush, brush, brush_pos)) {
+    } else if (!QXLGetBrush(pdev, drawable, &drawable->u.stroke.brush, brush, brush_pos,
+                            &drawable->surfaces_dest[0], &drawable->surfaces_rects[0])) {
         goto err;
     }
 
@@ -1264,6 +1356,51 @@ BOOL APIENTRY DrvStrokePath(SURFOBJ *surf, PATHOBJ *path, CLIPOBJ *clip, XFORMOB
 err:
     ReleaseOutput(pdev, drawable->release_info.id);
     return FALSE;
+}
+
+HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
+{
+    PDev *pdev;
+    UINT8 *base_mem;
+    UINT32 surface_id;
+    QXLPHYSICAL phys_mem;
+    HBITMAP hbitmap;
+
+    pdev = (PDev *)dhpdev;
+
+    if (!pdev->dd_initialized) {
+        return 0;
+    }
+
+    surface_id = GetFreeSurface(pdev);
+    if (!surface_id) {
+        goto out_error;
+    }
+
+    hbitmap = CreateDeviceBitmap(pdev, size, pdev->bitmap_format, &phys_mem, &base_mem, surface_id,
+                                 DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
+    if (!hbitmap) {
+        goto out_error;
+    }
+
+    return hbitmap;
+
+    // to optimize the failure case
+out_error:
+	return 0; 
+}
+
+VOID APIENTRY DrvDeleteDeviceBitmap(DHSURF dhsurf)
+{
+    UINT32 surface_id;
+    PDev *pdev;
+    SurfaceInfo *surface;
+
+    surface = (SurfaceInfo *)dhsurf;
+    pdev = surface->pdev;
+    surface_id = surface - pdev->surfaces_info;
+
+    DeleteDeviceBitmap(pdev, surface_id, DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
 }
 
 #ifdef CALL_TEST

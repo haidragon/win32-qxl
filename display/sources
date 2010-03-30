@@ -30,5 +30,6 @@ SOURCES=driver.c        \
         mspace.c        \
         quic.c          \
         surface.c       \
+        dd.c            \
         driver.rc
 

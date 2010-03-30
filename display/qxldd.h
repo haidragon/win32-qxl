@@ -166,6 +166,8 @@ typedef struct DevRes {
     struct InternalPalette *palette_cache[PALETTE_HASH_SIZE];
     UINT32 num_palettes;
 
+    UINT8 *surfaces_used;
+
 #ifdef DBG
     int num_free_pages;
     int num_outputs;
@@ -187,6 +189,20 @@ typedef struct DevRes {
 #define SSE_MASK 15
 #define SSE_ALIGN 16
 
+ 
+typedef struct DrawArea {
+   HSURF bitmap;
+   SURFOBJ* surf_obj;
+   UINT8 *base_mem;
+} DrawArea;
+
+typedef struct PDev PDev;
+
+typedef struct SurfaceInfo {
+    DrawArea draw_area;
+    PDev *pdev;
+} SurfaceInfo;
+
 typedef struct PDev {
     HANDLE driver;
     HDEV eng;
@@ -197,8 +213,14 @@ typedef struct PDev {
     SIZEL resolution;
     UINT32 max_bitmap_size;
     ULONG bitmap_format;
+
     ULONG fb_size;
     BYTE* fb;
+    UINT64 fb_phys;
+    UINT8 dd_initialized;
+    UINT8 dd_slot_initialized;
+    UINT8 dd_mem_slot;
+
     ULONG stride;
     FLONG red_mask;
     FLONG green_mask;
@@ -229,12 +251,16 @@ typedef struct PDev {
 
     HSEMAPHORE malloc_sem;
     HSEMAPHORE print_sem;
+    HSEMAPHORE cmd_sem;
 
     PMemSlot *mem_slots;
     UINT8 num_mem_slot;
     UINT8 main_mem_slot;
     UINT8 slot_id_bits;
     UINT8 slot_gen_bits;
+    UINT8 *slots_generation;
+    UINT64 *ram_slot_start;
+    UINT64 *ram_slot_end;
     SPICE_ADDRESS va_slot_mask;
 
     UINT32 num_io_pages;
@@ -245,6 +271,7 @@ typedef struct PDev {
 
     UINT32 update_area_port;
     SpiceRect *update_area;
+    UINT32 *update_surface;
 
     UINT32 *mm_clock;
 
@@ -259,6 +286,9 @@ typedef struct PDev {
     UINT32 create_primary_port;
     UINT32 destroy_primary_port;
     UINT32 destroy_surface_wait_port;
+    UINT32 memslot_add_port;
+    UINT32 memslot_del_port;
+    UINT32 destroy_all_surfaces_port;
 
     UINT8* primary_memory_start;
     UINT32 primary_memory_size;
@@ -273,6 +303,11 @@ typedef struct PDev {
     UpdateTrace update_trace_items[NUM_UPDATE_TRACE_ITEMS];
 
     UINT8 FPUSave[16 * 4 + 15];
+
+    UINT32 n_surfaces;
+    SurfaceInfo *surfaces_info;
+
+    VIDEOMEMORY *pvmList;
 } PDev;
 
 

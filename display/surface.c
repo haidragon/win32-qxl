@@ -36,14 +36,18 @@
 #include "res.h"
 #include "surface.h"
 
-BOOL CreateDrawArea(PDev *pdev, DrawArea *drawarea, UINT8 *base_mem, UINT32 cx, UINT32 cy)
+BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, UINT32 cx, UINT32 cy, UINT32 stride,
+                    UINT32 surface_id)
 {
     SIZEL  size;
+    DrawArea *drawarea;
 
     size.cx = cx;
     size.cy = cy;
 
-    if (!(drawarea->bitmap = (HSURF)EngCreateBitmap(size, size.cx << 2, BMF_32BPP, 0, base_mem))) {
+    drawarea = &pdev->surfaces_info[surface_id].draw_area;
+
+    if (!(drawarea->bitmap = (HSURF)EngCreateBitmap(size, stride, BMF_32BPP, 0, base_mem))) {
         DEBUG_PRINT((pdev, 0, "%s: EngCreateBitmap failed\n", __FUNCTION__));
         return FALSE;
     }
@@ -58,6 +62,8 @@ BOOL CreateDrawArea(PDev *pdev, DrawArea *drawarea, UINT8 *base_mem, UINT32 cx, 
         goto error;
     }
 
+    drawarea->base_mem = base_mem;
+
     return TRUE;
 error:
     EngDeleteSurface(drawarea->bitmap);
@@ -66,15 +72,19 @@ error:
 
 VOID FreeDrawArea(DrawArea *drawarea)
 {
-    EngUnlockSurface(drawarea->surf_obj);
-    EngDeleteSurface(drawarea->bitmap);
+    if (drawarea->surf_obj) {
+        EngUnlockSurface(drawarea->surf_obj);
+        EngDeleteSurface(drawarea->bitmap);
+        drawarea->surf_obj = NULL;
+    }
 }
 
 HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *phys_mem,
-                           UINT8 **base_mem, UINT8 allocation_type)
+                           UINT8 **base_mem, UINT32 surface_id, UINT8 allocation_type)
 {
     UINT8 depth;
     HBITMAP surf;
+    UINT32 stride;
 
     switch (format) {
         case BMF_8BPP:
@@ -93,7 +103,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
             return 0;
     };
 
-    if (!(surf = EngCreateDeviceBitmap((DHSURF)pdev, size, format))) {
+    if (!(surf = EngCreateDeviceBitmap((DHSURF)&pdev->surfaces_info[surface_id], size, format))) {
         DEBUG_PRINT((NULL, 0, "%s: create device surface failed, 0x%lx\n",
                      __FUNCTION__, pdev));
         goto out_error1;
@@ -104,26 +114,61 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
                              HOOK_STRETCHBLTROP | HOOK_TRANSPARENTBLT | HOOK_ALPHABLEND
 #ifdef CALL_TEST
                              | HOOK_PLGBLT | HOOK_FILLPATH | HOOK_STROKEANDFILLPATH | HOOK_LINETO |
-                             HOOK_GRADIENTFILL
+                             HOOK_GRADIENTFILL 
 #endif
                              )) {
         DEBUG_PRINT((pdev, 0, "%s: EngAssociateSurface failed\n", __FUNCTION__));
         goto out_error2;
     }
 
-    if (!QXLGetSurface(pdev, phys_mem, size.cx, size.cy, 32, base_mem, allocation_type)) {
+    pdev->surfaces_info[surface_id].pdev = pdev;
+
+    QXLGetSurface(pdev, phys_mem, size.cx, size.cy, depth, &stride, base_mem, allocation_type);
+    if (!*base_mem) {
         goto out_error2;
+    }
+
+    if (!CreateDrawArea(pdev, *base_mem, size.cx, size.cy, stride, surface_id)) {
+        goto out_error3;
+    }
+
+    if (allocation_type != DEVICE_BITMAP_ALLOCATION_TYPE_SURF0) {
+        QXLSurfaceCmd *surface;
+
+        surface = SurfaceCmd(pdev, QXL_SURFACE_CMD_CREATE, surface_id);
+        surface->u.surface_create.depth = depth;
+        surface->u.surface_create.width = size.cx;
+        surface->u.surface_create.height = size.cy;
+        surface->u.surface_create.stride = -(INT32)stride;
+        surface->u.surface_create.data = *phys_mem;
+        PushSurfaceCmd(pdev, surface);
     }
 
     return surf;
 
+out_error3:
+    QXLDelSurface(pdev, *base_mem, allocation_type);
 out_error2:
+    FreeSurface(pdev, surface_id);
     EngDeleteSurface((HSURF)surf);
 out_error1:
     return 0;
 }
 
-VOID DeleteDeviceBitmap(HSURF surf)
+VOID DeleteDeviceBitmap(PDev *pdev, UINT32 surface_id, UINT8 allocation_type)
 {
-    EngDeleteSurface(surf);
+    DrawArea *drawarea;
+
+    drawarea = &pdev->surfaces_info[surface_id].draw_area;
+
+    FreeDrawArea(drawarea);
+
+    if (allocation_type != DEVICE_BITMAP_ALLOCATION_TYPE_SURF0 &&
+        pdev->Res.surfaces_used[surface_id]) {
+        QXLSurfaceCmd *surface;
+
+        surface = SurfaceCmd(pdev, QXL_SURFACE_CMD_DESTROY, surface_id);
+        QXLGetDelSurface(pdev, surface, surface_id, allocation_type);
+        PushSurfaceCmd(pdev, surface);
+    }
 }

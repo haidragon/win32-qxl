@@ -15,6 +15,9 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <ddrawi.h>
+#include <ddraw.h>
+#include <dxmini.h>
 #include "os_dep.h"
 #include "res.h"
 #include "ioaccess.h"
@@ -22,6 +25,8 @@
 #include "mspace.h"
 #include "quic.h"
 #include "murmur_hash2a.h"
+#include "surface.h"
+#include "dd.h"
 
 #if (WINVER < 0x0501)
 #define WAIT_FOR_EVENT(pdev, event, timeout) (pdev)->WaitForEvent(event, timeout)
@@ -67,10 +72,12 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable);
 
 #define PUSH_CMD(pdev) do {                             \
     int notify;                                         \
+    EngAcquireSemaphore(pdev->cmd_sem);                 \
     SPICE_RING_PUSH(pdev->cmd_ring, notify);            \
     if (notify) {                                       \
         WRITE_PORT_UCHAR(pdev->notify_cmd_port, 0);     \
     }                                                   \
+    EngReleaseSemaphore(pdev->cmd_sem);                 \
 } while (0);
 
 #define PUSH_CURSOR_CMD(pdev) do {                      \
@@ -127,6 +134,15 @@ static _inline void DrawableAddRes(PDev *pdev, QXLDrawable *drawable, Resource *
     QXLOutput *output;
 
     output = (QXLOutput *)((UINT8 *)drawable - sizeof(QXLOutput));
+    AddRes(pdev, output, res);
+}
+
+ 
+static _inline void SurfaceAddRes(PDev *pdev, QXLSurfaceCmd *surface, Resource *res)
+{
+    QXLOutput *output;
+
+    output = (QXLOutput *)((UINT8 *)surface - sizeof(QXLOutput));
     AddRes(pdev, output, res);
 }
 
@@ -311,6 +327,10 @@ void CleanGlobalRes()
                 EngFreeMem(global_res[i].dynamic);
                 global_res[i].dynamic = NULL;
             }
+            if (global_res[i].surfaces_used) {
+                EngFreeMem(global_res[i].surfaces_used);
+                global_res[i].surfaces_used = NULL;
+            }
         }
         EngFreeMem(global_res);
         global_res = NULL;
@@ -345,6 +365,12 @@ static void InitRes(PDev *pdev)
     pdev->Res.dynamic = EngAllocMem(FL_ZERO_MEMORY, sizeof(DevResDynamic), ALLOC_TAG);
     if (!pdev->Res.dynamic) {
         PANIC(pdev, "Res dynamic allocation failed\n");
+    }
+
+    pdev->Res.surfaces_used = EngAllocMem(FL_ZERO_MEMORY, sizeof(UINT8) * pdev->n_surfaces,
+                                          ALLOC_TAG);
+    if (!pdev->Res.surfaces_used) {
+        PANIC(pdev, "Res surfaces_used allocation failed\n");
     }
 
     pdev->Res.free_outputs = 0;
@@ -457,17 +483,21 @@ static QXLDrawable *GetDrawable(PDev *pdev)
     return(QXLDrawable *)output->data;
 }
 
-QXLDrawable *Drawable(PDev *pdev, UINT8 type, RECTL *area, CLIPOBJ *clip)
+QXLDrawable *Drawable(PDev *pdev, UINT8 type, RECTL *area, CLIPOBJ *clip, UINT32 surface_id)
 {
     QXLDrawable *drawable;
 
     ASSERT(pdev, pdev && area);
 
     drawable = GetDrawable(pdev);
+    drawable->surface_id = surface_id;
     drawable->type = type;
     drawable->effect = QXL_EFFECT_BLEND;
     drawable->self_bitmap = 0;
     drawable->mm_time = *pdev->mm_clock;
+    drawable->surfaces_dest[0] = -1;
+    drawable->surfaces_dest[1] = - 1;
+    drawable->surfaces_dest[2] = -1;
     CopyRect(&drawable->bbox, area);
 
     if (!SetClip(pdev, clip, drawable)) {
@@ -489,23 +519,141 @@ void PushDrawable(PDev *pdev, QXLDrawable *drawable)
     PUSH_CMD(pdev);
 }
 
-_inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT8 **base_mem,
-                              QXLPHYSICAL *phys_mem, UINT8 allocation_type)
+static QXLSurfaceCmd *GetSurfaceCmd(PDev *pdev)
+{
+    QXLOutput *output;
+
+    output = (QXLOutput *)AllocMem(pdev, sizeof(QXLOutput) + sizeof(QXLSurfaceCmd));
+    output->num_res = 0;
+    ((QXLSurfaceCmd *)output->data)->release_info.id = (UINT64)output;
+    DEBUG_PRINT((pdev, 9, "%s 0x%x\n", __FUNCTION__, output));
+    ONDBG(pdev->Res.num_outputs++); //todo: atomic
+    return(QXLSurfaceCmd *)output->data;
+}
+
+QXLSurfaceCmd *SurfaceCmd(PDev *pdev, UINT8 type, UINT32 surface_id)
+{
+    QXLSurfaceCmd *surface_cmd;
+
+    ASSERT(pdev, pdev && area);
+
+    surface_cmd = GetSurfaceCmd(pdev);
+    surface_cmd->surface_id = surface_id;
+    surface_cmd->type = type;
+    surface_cmd->flags = 0;
+
+    return surface_cmd;
+}
+
+void PushSurfaceCmd(PDev *pdev, QXLSurfaceCmd *surface_cmd)
+{
+    QXLCommand *cmd;
+
+    WaitForCmdRing(pdev);
+    cmd = SPICE_RING_PROD_ITEM(pdev->cmd_ring);
+    cmd->type = QXL_CMD_SURFACE;
+    cmd->data = PA(pdev, surface_cmd, pdev->main_mem_slot);
+    PUSH_CMD(pdev);
+}
+
+
+_inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT32 *stride,
+                              UINT8 **base_mem, QXLPHYSICAL *phys_mem, UINT8 allocation_type)
 {
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
-    ASSERT(pdev, allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_SURF0);
-    ASSERT(pdev, x * y * depth /8 <= pdev->primary_memory_size);
+    switch (allocation_type) {
+    case DEVICE_BITMAP_ALLOCATION_TYPE_SURF0:
+        ASSERT(pdev, x * y * depth /8 <= pdev->primary_memory_size);
+        *base_mem = pdev->primary_memory_start;
+        *phys_mem = PA(pdev, *base_mem, pdev->main_mem_slot);
+        *stride = x * depth / 8;
+        break;
+    case DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM:
+        *base_mem = AllocMem(pdev, x * y * depth / 8);
+        *phys_mem = PA(pdev, *base_mem, pdev->main_mem_slot);
+        *stride = x * depth / 8;
+        break;
+    case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM: { 
+        SURFACEALIGNMENT surfacealignment;
 
-    *base_mem = pdev->primary_memory_start;
-    *phys_mem = PA(pdev, *base_mem, pdev->main_mem_slot);
+        memset(&surfacealignment, 0, sizeof(surfacealignment));
+        surfacealignment.Linear.dwStartAlignment = 4;
+        surfacealignment.Linear.dwPitchAlignment = 4;
+        *base_mem = (UINT8 *)HeapVidMemAllocAligned((LPVIDMEM)pdev->pvmList, x * depth / 8, y,
+                                                    &surfacealignment, stride);
+        *phys_mem = PA(pdev, (PVOID)((UINT64)*base_mem), pdev->dd_mem_slot);
+        break;
+    }
+    default:
+        PANIC(pdev, "No allocation type");
+    }
 }
 
-BOOL QXLGetSurface(PDev *pdev, QXLPHYSICAL *surface_phys, UINT32 x, UINT32 y, UINT32 depth,
-                   UINT8 **base_mem, UINT8 allocation_type) {
-    ASSERT(pdev, allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_SURF0);
-    GetSurfaceMemory(pdev, x, y, depth, base_mem, surface_phys, allocation_type);
-    return TRUE;
+void QXLGetSurface(PDev *pdev, QXLPHYSICAL *surface_phys, UINT32 x, UINT32 y, UINT32 depth,
+                   UINT32 *stride, UINT8 **base_mem, UINT8 allocation_type)
+{
+    GetSurfaceMemory(pdev, x, y, depth, stride, base_mem, surface_phys, allocation_type);
+}
+
+void QXLDelSurface(PDev *pdev, UINT8 *base_mem, UINT8 allocation_type)
+{
+    if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM) {
+        FreeMem(pdev, base_mem);
+    }
+}
+
+typedef struct InternalDelSurface {
+    UINT32 surface_id;
+    UINT8 allocation_type;
+} InternalDelSurface;
+
+
+static void FreeDelSurface(PDev *pdev, Resource *res)
+{
+    InternalDelSurface *internal;
+    DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
+
+    internal = (InternalDelSurface *)res->res;
+    switch (internal->allocation_type) {
+    case DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM:
+        FreeMem(pdev, pdev->surfaces_info[internal->surface_id].draw_area.base_mem);
+        break;
+    case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM:
+        VidMemFree(pdev->pvmList->lpHeap,
+                   (FLATPTR)pdev->surfaces_info[internal->surface_id].draw_area.base_mem);
+        break;
+    default:
+        PANIC(pdev, "bad allocation type");
+    }
+    FreeSurface(pdev, internal->surface_id);
+    FreeMem(pdev, res);
+
+    DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
+}
+
+#define SURFACEDEL_ALLOC_BASE (sizeof(Resource) + sizeof(InternalDelSurface))
+
+void QXLGetDelSurface(PDev *pdev, QXLSurfaceCmd *surface, UINT32 surface_id, UINT8 allocation_type)
+{
+    Resource *surface_res;
+    InternalDelSurface *internal;
+    size_t alloc_size;
+
+    DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
+
+    alloc_size = SURFACEDEL_ALLOC_BASE;
+    surface_res = AllocMem(pdev, alloc_size);
+    
+    surface_res->refs = 1;
+    surface_res->free = FreeDelSurface;
+
+    internal = (InternalDelSurface *)surface_res->res;
+    internal->surface_id = surface_id;
+    internal->allocation_type = allocation_type;
+
+    SurfaceAddRes(pdev, surface, surface_res);
+    RELEASE_RES(pdev, surface_res);
 }
 
 static void FreePath(PDev *pdev, Resource *res)
@@ -1512,6 +1660,15 @@ static _inline void SaveFPU(PDev *pdev)
     }
 }
 
+static void FreeSurfaceImage(PDev *pdev, Resource *res)
+{
+    DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
+
+    FreeMem(pdev, res);
+
+    DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
+}
+
 #define BITMAP_ALLOC_BASE (sizeof(Resource) + sizeof(InternalImage) + sizeof(QXLDataChunk))
 
 static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans,
@@ -1789,7 +1946,8 @@ static _inline UINT32 get_image_serial()
 }
 
 BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SURFOBJ *surf,
-                  SpiceRect *area, XLATEOBJ *color_trans, UINT32 *hash_key, BOOL use_cache)
+                  SpiceRect *area, XLATEOBJ *color_trans, UINT32 *hash_key, BOOL use_cache,
+                  INT32 *surface_dest)
 {
     Resource *image_res;
     InternalImage *internal;
@@ -1804,8 +1962,29 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
     ASSERT(pdev, !hash_key || use_cache);
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
     if (surf->iType != STYPE_BITMAP) {
-        DEBUG_PRINT((pdev, 0, "%s: copy from device doing nothing!!!\n", __FUNCTION__));
-        return FALSE;
+        UINT32 alloc_size;
+
+        DEBUG_PRINT((pdev, 9, "%s: copy from device\n", __FUNCTION__));
+
+        alloc_size = sizeof(Resource) + sizeof(InternalImage);
+        image_res = AllocMem(pdev, alloc_size);
+
+        ONDBG(pdev->num_bits_pages++);
+        image_res->refs = 1;
+        image_res->free = FreeSurfaceImage;
+
+        internal = (InternalImage *)image_res->res;
+
+        internal->image.descriptor.type = SPICE_IMAGE_TYPE_SURFACE;
+        *surface_dest = internal->image.surface_image.surface_id = GetSurfaceId(surf);
+
+        *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
+
+        DrawableAddRes(pdev, drawable, image_res);
+
+        RELEASE_RES(pdev, image_res);
+
+        return TRUE;
     }
 
     if (area->left < 0 || area->right > surf->sizlBitmap.cx ||
@@ -1910,7 +2089,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
 }
 
 BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys,
-                       SURFOBJ *surf, SpiceRect *area)
+                       SURFOBJ *surf, SpiceRect *area, INT32 *surface_dest)
 {
     Resource *image_res;
     InternalImage *internal;
@@ -1922,7 +2101,6 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
     INT32 height = area->bottom - area->top;
 
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
-    ASSERT(pdev, surf->iBitmapFormat == BMF_32BPP && surf->iType == STYPE_BITMAP);
     ASSERT(pdev, area->left >= 0 && area->right <= surf->sizlBitmap.cx &&
            area->top >= 0 && area->bottom <= surf->sizlBitmap.cy);
 
@@ -1931,6 +2109,32 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
                  surf->fjBitmap & BMF_DONTCACHE, width, height,
                  surf->sizlBitmap.cx, surf->sizlBitmap.cy, surf->hsurf,
                  surf->iBitmapFormat));
+
+    if (surf->iType != STYPE_BITMAP) {
+        UINT32 alloc_size;
+
+        DEBUG_PRINT((pdev, 9, "%s: copy from device\n", __FUNCTION__));
+
+        alloc_size = sizeof(Resource) + sizeof(InternalImage);
+        image_res = AllocMem(pdev, alloc_size);
+
+        ONDBG(pdev->num_bits_pages++);
+        image_res->refs = 1;
+        image_res->free = FreeSurfaceImage;
+
+        internal = (InternalImage *)image_res->res;
+
+        internal->image.descriptor.type = SPICE_IMAGE_TYPE_SURFACE;
+        *surface_dest = internal->image.surface_image.surface_id = GetSurfaceId(surf);
+
+        *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
+        DrawableAddRes(pdev, drawable, image_res);
+        RELEASE_RES(pdev, image_res);
+
+        return TRUE;
+    }
+
+    ASSERT(pdev, surf->iBitmapFormat == BMF_32BPP && surf->iType == STYPE_BITMAP);
 
     //todo: use GetChachImage
 
@@ -2024,7 +2228,7 @@ BOOL QXLGetBitsFromCache(PDev *pdev, QXLDrawable *drawable, UINT32 hash_key, QXL
 }
 
 BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, SpiceQMask *qxl_mask, SURFOBJ *mask, POINTL *pos,
-                BOOL invers, LONG width, LONG height)
+                BOOL invers, LONG width, LONG height, INT32 *surface_dest)
 {
     SpiceRect area;
 
@@ -2046,7 +2250,8 @@ BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, SpiceQMask *qxl_mask, SURFOBJ
     area.top = pos->y;
     area.bottom = area.top + height;
 
-    if (QXLGetBitmap(pdev, drawable, &qxl_mask->bitmap, mask, &area, NULL, NULL, TRUE)) {
+    if (QXLGetBitmap(pdev, drawable, &qxl_mask->bitmap, mask, &area, NULL, NULL, TRUE,
+                     surface_dest)) {
         qxl_mask->pos.x = area.left;
         qxl_mask->pos.y = area.top;
         return TRUE;
@@ -2082,7 +2287,7 @@ UINT8 *QXLGetBuf(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *buf_phys, UINT3
 }
 
 #ifdef UPDATE_CMD
-void UpdateArea(PDev *pdev, RECTL *area)
+void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
 {
     QXLCommand *cmd;
     QXLOutput *output;
@@ -2098,6 +2303,7 @@ void UpdateArea(PDev *pdev, RECTL *area)
 
     CopyRect(&updat_cmd->area, area);
     updat_cmd->update_id = ++pdev->Res.update_id;
+    updat_cmd->surface_id = surface_id;
 
     WaitForCmdRing(pdev);
     cmd = SPICE_RING_PROD_ITEM(pdev->cmd_ring);
@@ -2131,10 +2337,11 @@ void UpdateArea(PDev *pdev, RECTL *area)
 
 #else
 
-void UpdateArea(PDev *pdev, RECTL *area)
+void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
 {
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     CopyRect(pdev->update_area, area);
+    *pdev->update_surface = surface_id;
     WRITE_PORT_UCHAR(pdev->update_area_port, 0);
 }
 

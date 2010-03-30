@@ -946,6 +946,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             driver_info->notify_cmd_port = dev_ext->io_port + QXL_IO_NOTIFY_CMD;
             driver_info->notify_cursor_port = dev_ext->io_port + QXL_IO_NOTIFY_CURSOR;
             driver_info->notify_oom_port = dev_ext->io_port + QXL_IO_NOTIFY_OOM;
+
             driver_info->log_port = dev_ext->io_port + QXL_IO_LOG;
             driver_info->log_buf = dev_ext->ram_header->log_buf;
 
@@ -957,6 +958,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             driver_info->log_level = &dev_ext->rom->log_level;
             driver_info->update_area_port = dev_ext->io_port + QXL_IO_UPDATE_AREA;
             driver_info->update_area = &dev_ext->ram_header->update_area;
+            driver_info->update_surface = &dev_ext->ram_header->update_surface;
 
             driver_info->num_pages = dev_ext->rom->num_pages;
             driver_info->io_pages_virt = dev_ext->ram_start + driver_info->surface0_area_size;
@@ -967,16 +969,26 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             driver_info->num_mem_slot = dev_ext->rom->slots_end;
             driver_info->slot_gen_bits = dev_ext->rom->slot_gen_bits;
             driver_info->slot_id_bits = dev_ext->rom->slot_id_bits;
+	    driver_info->slots_generation = &dev_ext->rom->slot_generation;
+	    driver_info->ram_slot_start = &dev_ext->ram_header->mem_slot.mem_start;
+	    driver_info->ram_slot_end = &dev_ext->ram_header->mem_slot.mem_end;
             driver_info->main_mem_slot = dev_ext->mem_slots[driver_info->main_mem_slot_id];
 
 #if (WINVER < 0x0501)
             driver_info->WaitForEvent = QXLWaitForEvent;
 #endif
             driver_info->destroy_surface_wait_port = dev_ext->io_port + QXL_IO_DESTROY_SURFACE_WAIT;
+            driver_info->destroy_all_surfaces_port = dev_ext->io_port + QXL_IO_DESTROY_ALL_SURFACES;
             driver_info->create_primary_port = dev_ext->io_port + QXL_IO_CREATE_PRIMARY;
             driver_info->destroy_primary_port = dev_ext->io_port + QXL_IO_DESTROY_PRIMARY;
+            driver_info->memslot_add_port = dev_ext->io_port + QXL_IO_MEMSLOT_ADD;
+            driver_info->memslot_del_port = dev_ext->io_port + QXL_IO_MEMSLOT_DEL;
 
             driver_info->primary_surface_create = &dev_ext->ram_header->create_surface;
+
+            driver_info->n_surfaces = dev_ext->rom->n_surfaces;
+
+	    driver_info->fb_phys = dev_ext->vram_physical.QuadPart;
 
             driver_info->dev_id = dev_ext->rom->id;
         }

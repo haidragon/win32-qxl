@@ -46,6 +46,12 @@ static _inline LONG RectSize(RECTL *rect)
     return (rect->right - rect->left) * (rect->bottom - rect->top);
 }
 
+#define CopyRectPoint(dest, src, width, height) \
+    (dest)->left = (src)->x; \
+    (dest)->right = (src)->x + width; \
+    (dest)->top = (src)->y; \
+    (dest)->bottom = (src)->y + height; 
+
 #define SameRect(r1, r2) ((r1)->left == (r2)->left && (r1)->right == (r2)->right && \
                           (r1)->top == (r2)->top && (r1)->bottom == (r2)->bottom)
 

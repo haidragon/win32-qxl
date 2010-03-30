@@ -66,6 +66,7 @@ typedef struct QXLDriverInfo {
 
     UINT32 update_area_port;
     SpiceRect *update_area;
+    UINT32 *update_surface;
 
     UINT32 *mm_clock;
 
@@ -79,15 +80,25 @@ typedef struct QXLDriverInfo {
     UINT8 main_mem_slot_id;
     UINT8 slot_id_bits;
     UINT8 slot_gen_bits;
+    UINT8 *slots_generation;
+    UINT64 *ram_slot_start;
+    UINT64 *ram_slot_end;
     MemSlot main_mem_slot;
 
     UINT32 destroy_surface_wait_port;
     UINT32 create_primary_port;
     UINT32 destroy_primary_port;
+    UINT32 memslot_add_port;
+    UINT32 memslot_del_port;
+    UINT32 destroy_all_surfaces_port;
 
     UINT32 dev_id;
 
     QXLSurfaceCreate *primary_surface_create;
+
+    UINT32 n_surfaces;
+
+    UINT64 fb_phys;
 } QXLDriverInfo;
 
 
