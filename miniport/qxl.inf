@@ -17,7 +17,7 @@ qxl.Display = 11		; system32
 %RHAT% = q.Mfg
 
 [q.Mfg]
-%RHAT% %QXL% = qxl, PCI\VEN_1b36&DEV_0100
+%RHAT% %QXL% = qxl, PCI\VEN_1b36&DEV_01ff
 
 [ControlFlags]
 ExcludeFromSelect = *
