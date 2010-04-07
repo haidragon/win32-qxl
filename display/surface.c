@@ -109,16 +109,30 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
         goto out_error1;
     }
 
-    if (!EngAssociateSurface((HSURF)surf, pdev->eng,  HOOK_SYNCHRONIZE | HOOK_COPYBITS |
-                             HOOK_BITBLT | HOOK_TEXTOUT | HOOK_STROKEPATH | HOOK_STRETCHBLT |
-                             HOOK_STRETCHBLTROP | HOOK_TRANSPARENTBLT | HOOK_ALPHABLEND
+    if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_SURF0) {
+        if (!EngAssociateSurface((HSURF)surf, pdev->eng,  HOOK_SYNCHRONIZE | HOOK_COPYBITS |
+                                 HOOK_BITBLT | HOOK_TEXTOUT | HOOK_STROKEPATH | HOOK_STRETCHBLT |
+                                 HOOK_STRETCHBLTROP | HOOK_TRANSPARENTBLT
 #ifdef CALL_TEST
-                             | HOOK_PLGBLT | HOOK_FILLPATH | HOOK_STROKEANDFILLPATH | HOOK_LINETO |
-                             HOOK_GRADIENTFILL 
+                                 | HOOK_PLGBLT | HOOK_FILLPATH | HOOK_STROKEANDFILLPATH | HOOK_LINETO |
+                                 HOOK_GRADIENTFILL 
 #endif
-                             )) {
-        DEBUG_PRINT((pdev, 0, "%s: EngAssociateSurface failed\n", __FUNCTION__));
-        goto out_error2;
+                                 )) {
+            DEBUG_PRINT((pdev, 0, "%s: EngAssociateSurface failed\n", __FUNCTION__));
+            goto out_error2;
+        }
+    } else {
+        if (!EngAssociateSurface((HSURF)surf, pdev->eng,  HOOK_SYNCHRONIZE | HOOK_COPYBITS |
+                                 HOOK_BITBLT | HOOK_TEXTOUT | HOOK_STROKEPATH | HOOK_STRETCHBLT |
+                                 HOOK_STRETCHBLTROP | HOOK_TRANSPARENTBLT | HOOK_ALPHABLEND
+    #ifdef CALL_TEST
+                                 | HOOK_PLGBLT | HOOK_FILLPATH | HOOK_STROKEANDFILLPATH | HOOK_LINETO |
+                                 HOOK_GRADIENTFILL 
+    #endif
+                                 )) {
+            DEBUG_PRINT((pdev, 0, "%s: EngAssociateSurface failed\n", __FUNCTION__));
+            goto out_error2;
+        }
     }
 
     pdev->surfaces_info[surface_id].pdev = pdev;
