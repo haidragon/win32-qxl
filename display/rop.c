@@ -744,7 +744,7 @@ static BOOL DoCopyBits(PDev *pdev, UINT32 surface_id, CLIPOBJ *clip, RECTL *area
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
 
     if (area->left == src_pos->x && area->top == src_pos->y) {
-        DEBUG_PRINT((pdev, 0, "%s: NOP\n", __FUNCTION__));
+        DEBUG_PRINT((pdev, 6, "%s: NOP\n", __FUNCTION__));
         return TRUE;
     }
 
