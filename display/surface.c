@@ -137,7 +137,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
 
     pdev->surfaces_info[surface_id].pdev = pdev;
 
-    QXLGetSurface(pdev, phys_mem, size.cx, size.cy, depth, &stride, base_mem, allocation_type);
+    QXLGetSurface(pdev, phys_mem, size.cx, size.cy, 32, &stride, base_mem, allocation_type);
     if (!*base_mem) {
         goto out_error2;
     }
