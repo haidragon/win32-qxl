@@ -1003,15 +1003,19 @@ static BOOL BitBltFromDev(PDev *pdev, SURFOBJ *src, SURFOBJ *dest, SURFOBJ *mask
     SURFOBJ* surf_obj;
     BOOL ret;
     UINT32 surface_id;
+    SurfaceInfo *surface;
 
+    surface = (SurfaceInfo *)src->dhsurf;
     surface_id = GetSurfaceId(src);
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
 
     area.top = MAX(0, src_pos.y);
-    area.bottom = MIN(src_pos.y + dest_rect->bottom - dest_rect->top, pdev->resolution.cy);
+    area.bottom = MIN(src_pos.y + dest_rect->bottom - dest_rect->top,
+                      surface->draw_area.surf_obj->sizlBitmap.cy);
     area.left = MAX(0, src_pos.x);
-    area.right = MIN(src_pos.x + dest_rect->right - dest_rect->left, pdev->resolution.cx);
+    area.right = MIN(src_pos.x + dest_rect->right - dest_rect->left,
+                     surface->draw_area.surf_obj->sizlBitmap.cx);
 
     UpdateArea(pdev, &area, surface_id);
 
@@ -1023,9 +1027,6 @@ static BOOL BitBltFromDev(PDev *pdev, SURFOBJ *src, SURFOBJ *dest, SURFOBJ *mask
         src_pos.y = src_pos.y - area.top;
         src_pos.x = src_pos.x - area.left;
     } else {
-        SurfaceInfo *surface;
-
-        surface = (SurfaceInfo *)src->dhsurf;
         surf_obj = surface->draw_area.surf_obj;
     }
 
