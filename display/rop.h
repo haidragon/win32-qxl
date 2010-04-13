@@ -32,4 +32,7 @@ typedef struct ROP3Info {
 
 extern ROP3Info rops2[];
 
+BOOL BitBltFromDev(PDev *pdev, SURFOBJ *src, SURFOBJ *dest, SURFOBJ *mask, CLIPOBJ *clip,
+                   XLATEOBJ *color_trans, RECTL *dest_rect, POINTL src_pos,
+                   POINTL *mask_pos, BRUSHOBJ *brush, POINTL *brush_pos, ROP4 rop4);
 #endif

@@ -27,6 +27,7 @@
 #include "murmur_hash2a.h"
 #include "surface.h"
 #include "dd.h"
+#include "rop.h"
 
 #if (WINVER < 0x0501)
 #define WAIT_FOR_EVENT(pdev, event, timeout) (pdev)->WaitForEvent(event, timeout)
@@ -2738,7 +2739,7 @@ typedef struct NewCursorInfo {
 #define CURSOR_ALLOC_SIZE (PAGE_SIZE << 1)
 
 static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFOBJ *surf,
-                            UINT16 type, NewCursorInfo *info)
+                            UINT16 type, NewCursorInfo *info, BOOL *in_cach)
 {
     InternalCursor *internal;
     QXLCursor *cursor;
@@ -2747,17 +2748,57 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     UINT8 *src;
     UINT8 *src_end;
     int line_size;
-
+    HSURF bitmap = 0;
+    SURFOBJ *local_surf = surf;
 
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
-
+    *in_cach = FALSE;
     unique = (surf->fjBitmap & BMF_DONTCACHE) ? 0 : surf->iUniq;
 
     if ((internal = CursorCacheGet(pdev, surf->hsurf, unique))) {
         res = (Resource *)((UINT8 *)internal - sizeof(Resource));
         CursorCmdAddRes(pdev, cmd, res);
         cmd->u.set.shape = PA(pdev, &internal->cursor, pdev->main_mem_slot);
+        *in_cach = TRUE;
         return TRUE;
+    }
+
+    if (surf->iType != STYPE_BITMAP) {
+        RECTL dest_rect;
+        POINTL src_pos;
+        ASSERT(pdev, surf->iBitmapFormat == BMF_32BPP || surf->iBitmapFormat == BMF_16BPP);
+
+        /* copying the surface to a bitmap */
+
+        bitmap = (HSURF)EngCreateBitmap(surf->sizlBitmap, surf->lDelta, surf->iBitmapFormat,
+                                        0, NULL);
+        if (!bitmap) {
+            DEBUG_PRINT((pdev, 0, "%s: EngCreateBitmap failed\n", __FUNCTION__));
+            return FALSE;
+        }
+
+        if (!EngAssociateSurface(bitmap, pdev->eng, 0)) {
+            DEBUG_PRINT((pdev, 0, "%s: EngAssociateSurface failed\n", __FUNCTION__));
+            goto error;
+        }
+
+        if (!(local_surf = EngLockSurface(bitmap))) {
+            DEBUG_PRINT((pdev, 0, "%s: EngLockSurface failed\n", __FUNCTION__));
+            goto error;
+        }
+
+        dest_rect.top = 0;
+        dest_rect.left = 0;
+        dest_rect.bottom = surf->sizlBitmap.cy;
+        dest_rect.right = surf->sizlBitmap.cx;
+
+        src_pos.x = 0;
+        src_pos.y = 0;
+            
+        if (!BitBltFromDev(pdev, surf, local_surf, NULL, NULL, NULL, &dest_rect, src_pos,
+                           NULL, NULL, NULL, 0xcccc)) {
+            goto error;
+        }
     }
 
     ASSERT(pdev, sizeof(Resource) + sizeof(InternalCursor) < CURSOR_ALLOC_SIZE);
@@ -2774,9 +2815,9 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     cursor = info->cursor = &internal->cursor;
     cursor->header.type = type;
     cursor->header.unique = unique ? ++pdev->Res.last_cursor_id : 0;
-    cursor->header.width = (UINT16)surf->sizlBitmap.cx;
-    cursor->header.height = (type == SPICE_CURSOR_TYPE_MONO) ? (UINT16)surf->sizlBitmap.cy >> 1 :
-                            (UINT16)surf->sizlBitmap.cy;
+    cursor->header.width = (UINT16)local_surf->sizlBitmap.cx;
+    cursor->header.height = (type == SPICE_CURSOR_TYPE_MONO) ? (UINT16)local_surf->sizlBitmap.cy >> 1 :
+                            (UINT16)local_surf->sizlBitmap.cy;
     cursor->header.hot_spot_x = (UINT16)hot_x;
     cursor->header.hot_spot_y = (UINT16)hot_y;
 
@@ -2812,10 +2853,10 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
         break;
     }
 
-    cursor->data_size = line_size * surf->sizlBitmap.cy;
-    src = surf->pvScan0;
-    src_end = src + (surf->lDelta * surf->sizlBitmap.cy);
-    for (; src != src_end; src += surf->lDelta) {
+    cursor->data_size = line_size * local_surf->sizlBitmap.cy;
+    src = local_surf->pvScan0;
+    src_end = src + (local_surf->lDelta * local_surf->sizlBitmap.cy);
+    for (; src != src_end; src += local_surf->lDelta) {
         PutBytes(pdev, &info->chunk, &info->now, &info->end, src, line_size,
                  &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
     }
@@ -2825,25 +2866,42 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     RELEASE_RES(pdev, res);
     cmd->u.set.shape = PA(pdev, &internal->cursor, pdev->main_mem_slot);
     DEBUG_PRINT((pdev, 11, "%s: done, data_size %u\n", __FUNCTION__, cursor->data_size));
+
+    if (local_surf != surf) {
+        EngUnlockSurface(local_surf);
+        EngDeleteSurface(bitmap);
+    }
+
+    return TRUE;
+error:
+    if (bitmap) {
+        ASSERT(pdev, local_surf != surf);
+        EngDeleteSurface(bitmap);
+    }
+
     return FALSE;
 }
 
 BOOL GetAlphaCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFOBJ *surf)
 {
     NewCursorInfo info;
+    BOOL ret;
+    BOOL in_cache;
 
     ASSERT(pdev, surf->iBitmapFormat == BMF_32BPP);
     ASSERT(pdev, surf->sizlBitmap.cx > 0 && surf->sizlBitmap.cy > 0);
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
-    GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, SPICE_CURSOR_TYPE_ALPHA, &info);
+    ret = GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, SPICE_CURSOR_TYPE_ALPHA, &info, &in_cache);
     DEBUG_PRINT((pdev, 8, "%s: done\n", __FUNCTION__));
-    return TRUE;
+    return ret;
 }
 
 BOOL GetMonoCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFOBJ *surf)
 {
     NewCursorInfo info;
+    BOOL ret;
+    BOOL in_cache;
 
     ASSERT(pdev, surf->iBitmapFormat == BMF_1BPP);
     ASSERT(pdev, surf->sizlBitmap.cy > 0 && (surf->sizlBitmap.cy & 1) == 0);
@@ -2851,9 +2909,9 @@ BOOL GetMonoCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFOB
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
 
-    GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, SPICE_CURSOR_TYPE_MONO, &info);
+    ret = GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, SPICE_CURSOR_TYPE_MONO, &info, &in_cache);
     DEBUG_PRINT((pdev, 8, "%s: done\n", __FUNCTION__));
-    return TRUE;
+    return ret;
 }
 
 BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFOBJ *surf,
@@ -2861,7 +2919,7 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
 {
     NewCursorInfo info;
     UINT16 type;
-
+    BOOL in_cache;
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
 
@@ -2899,7 +2957,12 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
         DEBUG_PRINT((pdev, 0, "%s: unexpected format\n", __FUNCTION__));
         return FALSE;
     }
-    if (!GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, type, &info)) {
+
+    if (!GetCursorCommon(pdev, cmd, hot_x, hot_y, surf, type, &info, &in_cache)) {
+        return FALSE;
+    }
+
+    if (!in_cache) {
         int line_size;
         UINT8 *src;
         UINT8 *src_end;
@@ -2946,6 +3009,10 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
             }
             info.cursor->data_size += 16 << 2;
         }
+
+        ASSERT(pdev, mask->iBitmapFormat == BMF_1BPP);
+        ASSERT(pdev, mask->iType == STYPE_BITMAP);
+
         line_size = ALIGN(mask->sizlBitmap.cx, 8) >> 3;
         info.cursor->data_size += line_size * surf->sizlBitmap.cy;
         src = mask->pvScan0;
