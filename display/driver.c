@@ -586,13 +586,14 @@ static VOID HideMouse(PDev *pdev)
     PushCursorCmd(pdev, cursor_cmd);
 }
 
-static VOID CreatePrimarySurface(PDev *pdev, UINT32 depth, UINT32 width, UINT32 height,
+static VOID CreatePrimarySurface(PDev *pdev, UINT32 depth, UINT32 format,
+                                 UINT32 width, UINT32 height,
                                  QXLPHYSICAL phys_mem)
 {
-    pdev->primary_surface_create->depth = depth;
+    pdev->primary_surface_create->format = format;
     pdev->primary_surface_create->width = width;
     pdev->primary_surface_create->height = height;
-    pdev->primary_surface_create->stride = -(INT32)width * 4;
+    pdev->primary_surface_create->stride = -(INT32)width * (depth / 8);
     pdev->primary_surface_create->mem = phys_mem;
 
     pdev->primary_surface_create->flags = 0;
@@ -834,25 +835,26 @@ static VOID UnmapFB(PDev *pdev)
 
 VOID EnableQXLPrimarySurface(PDev *pdev)
 {
-    UINT32 depth;
+    UINT32 depth, format;
 
     switch (pdev->bitmap_format) {
         case BMF_8BPP:
             PANIC(pdev, "bad formart type 8bpp\n");
         case BMF_16BPP:
             depth = 16;
+            format = SPICE_SURFACE_FMT_16_555;
             break;
         case BMF_24BPP:
-            depth = 32;
-            break;
         case BMF_32BPP:
             depth = 32;
+            format = SPICE_SURFACE_FMT_32_xRGB;
             break;
         default:
             PANIC(pdev, "bad formart type\n");
     };
 
-    CreatePrimarySurface(pdev, depth, pdev->resolution.cx, pdev->resolution.cy, pdev->surf_phys);
+    CreatePrimarySurface(pdev, depth, format,
+                         pdev->resolution.cx, pdev->resolution.cy, pdev->surf_phys);
     pdev->surf_enable = TRUE;
 }
 

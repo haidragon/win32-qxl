@@ -36,7 +36,7 @@
 #include "res.h"
 #include "surface.h"
 
-BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, UINT32 cx, UINT32 cy, UINT32 stride,
+BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, ULONG format, UINT32 cx, UINT32 cy, UINT32 stride,
                     UINT32 surface_id)
 {
     SIZEL  size;
@@ -47,7 +47,7 @@ BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, UINT32 cx, UINT32 cy, UINT32 st
 
     drawarea = &pdev->surfaces_info[surface_id].draw_area;
 
-    if (!(drawarea->bitmap = (HSURF)EngCreateBitmap(size, stride, BMF_32BPP, 0, base_mem))) {
+    if (!(drawarea->bitmap = (HSURF)EngCreateBitmap(size, stride, format, 0, base_mem))) {
         DEBUG_PRINT((pdev, 0, "%s: EngCreateBitmap failed\n", __FUNCTION__));
         return FALSE;
     }
@@ -82,23 +82,25 @@ VOID FreeDrawArea(DrawArea *drawarea)
 HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *phys_mem,
                            UINT8 **base_mem, UINT32 surface_id, UINT8 allocation_type)
 {
-    UINT8 depth;
+    UINT32 surface_format, depth;
     HBITMAP surf;
     UINT32 stride;
 
     switch (format) {
-        case BMF_8BPP:
-            return 0;
-            break;
         case BMF_16BPP:
+            surface_format = SPICE_SURFACE_FMT_16_555;
             depth = 16;
             break;
         case BMF_24BPP:
-            depth = 32;
-            break;
         case BMF_32BPP:
+            if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_SURF0) {
+                surface_format = SPICE_SURFACE_FMT_32_xRGB;
+            } else {
+                surface_format = SPICE_SURFACE_FMT_32_ARGB;
+            }
             depth = 32;
             break;
+        case BMF_8BPP:
         default:
             return 0;
     };
@@ -137,7 +139,8 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
 
     pdev->surfaces_info[surface_id].pdev = pdev;
 
-    QXLGetSurface(pdev, phys_mem, size.cx, size.cy, 32, &stride, base_mem, allocation_type);
+    QXLGetSurface(pdev, phys_mem, size.cx, size.cy, depth,
+                  &stride, base_mem, allocation_type);
     if (!*base_mem) {
         goto out_error2;
     }
@@ -150,7 +153,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
         QXLSurfaceCmd *surface;
 
         surface = SurfaceCmd(pdev, QXL_SURFACE_CMD_CREATE, surface_id);
-        surface->u.surface_create.depth = depth;
+        surface->u.surface_create.format = surface_format;
         surface->u.surface_create.width = size.cx;
         surface->u.surface_create.height = size.cy;
         surface->u.surface_create.stride = -(INT32)stride;
