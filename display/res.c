@@ -1946,6 +1946,25 @@ static _inline UINT32 get_image_serial()
     return ret;
 }
 
+static int rgb32_data_has_alpha(int width, int height, int stride,
+                                 UINT8 *data)
+{
+    UINT32 *line, *end;
+
+    while (height-- > 0) {
+        line = (UINT32 *)data;
+        end = line + width;
+        data += stride;
+        while (line != end) {
+            if ((*line & 0xff000000) != 0) {
+                return 1;
+            }
+            line++;
+        }
+    }
+    return 0;
+}
+
 BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SURFOBJ *surf,
                   SpiceRect *area, XLATEOBJ *color_trans, UINT32 *hash_key, BOOL use_cache,
                   INT32 *surface_dest)
@@ -1992,6 +2011,14 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
         area->top < 0 || area->bottom > surf->sizlBitmap.cy) {
         DEBUG_PRINT((pdev, 0, "%s: bad dimensions\n", __FUNCTION__));
         return FALSE;
+    }
+
+    if (surf->iBitmapFormat == BMF_32BPP) {
+        if (rgb32_data_has_alpha(width, height, surf->lDelta,
+                                 (UINT8 *)surf->pvScan0 + area->left * 4)) {
+            return QXLGetAlphaBitmap(pdev, drawable, image_phys,
+                                     surf, area, surface_dest);
+        }
     }
 
     DEBUG_PRINT((pdev, 11, "%s: iUniq=%x DONTCACHE=%x w=%d h=%d cx=%d cy=%d "
