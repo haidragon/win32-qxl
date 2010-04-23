@@ -145,7 +145,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
         goto out_error2;
     }
 
-    if (!CreateDrawArea(pdev, *base_mem, size.cx, size.cy, stride, surface_id)) {
+    if (!CreateDrawArea(pdev, *base_mem, format, size.cx, size.cy, stride, surface_id)) {
         goto out_error3;
     }
 

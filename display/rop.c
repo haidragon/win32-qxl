@@ -940,61 +940,6 @@ static BOOL DoROP3(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SU
     return TRUE;
 }
 
-static SURFOBJ *Copy16bppArea(PDev *pdev, SURFOBJ *src, RECTL *area)
-{
-    SIZEL  size;
-    HSURF bitmap;
-    SURFOBJ *surf_obj;
-    UINT8 *dest_line;
-    UINT8 *dest_end_line;
-    LONG src_stride;
-    UINT8 *src_line;
-    SurfaceInfo *surface;
-
-    surface = (SurfaceInfo *)src->dhsurf;
-
-    size.cx = area->right - area->left;
-    size.cy = area->bottom - area->top;
-
-    if (!(bitmap = (HSURF)EngCreateBitmap(size, 0, BMF_16BPP, 0, NULL))) {
-        DEBUG_PRINT((pdev, 0, "%s: EngCreateBitmap failed\n", __FUNCTION__));
-        return NULL;
-    }
-
-    if (!EngAssociateSurface(bitmap, pdev->eng, 0)) {
-        DEBUG_PRINT((pdev, 0, "%s: EngAssociateSurface failed\n", __FUNCTION__));
-        goto error;
-    }
-
-    if (!(surf_obj = EngLockSurface(bitmap))) {
-        DEBUG_PRINT((pdev, 0, "%s: EngLockSurface failed\n", __FUNCTION__));
-        goto error;
-    }
-
-    dest_line = surf_obj->pvScan0;
-    dest_end_line = dest_line + surf_obj->lDelta * surf_obj->sizlBitmap.cy;
-    src_stride = surface->draw_area.surf_obj->lDelta;
-    src_line = (UINT8 *)surface->draw_area.surf_obj->pvScan0 + area->top * src_stride +
-                        (area->left << 2);
-
-    for (; dest_line != dest_end_line; dest_line += surf_obj->lDelta, src_line += src_stride) {
-        UINT16 *dest = (UINT16 *)dest_line;
-        UINT16 *end = dest + surf_obj->sizlBitmap.cx;
-        UINT32 *src = (UINT32 *)src_line;
-        for (; dest < end; dest++, src++) {
-            *dest = ((*src & 0x00f80000) >> 9) |
-                    ((*src & 0x0000f800) >> 6) |
-                    ((*src & 0x000000f8) >> 3);
-        }
-    }
-    return surf_obj;
-
-error:
-    EngDeleteSurface(bitmap);
-    return NULL;
-
-}
-
 BOOL BitBltFromDev(PDev *pdev, SURFOBJ *src, SURFOBJ *dest, SURFOBJ *mask, CLIPOBJ *clip,
                    XLATEOBJ *color_trans, RECTL *dest_rect, POINTL src_pos,
                    POINTL *mask_pos, BRUSHOBJ *brush, POINTL *brush_pos, ROP4 rop4)
@@ -1019,29 +964,13 @@ BOOL BitBltFromDev(PDev *pdev, SURFOBJ *src, SURFOBJ *dest, SURFOBJ *mask, CLIPO
 
     UpdateArea(pdev, &area, surface_id);
 
-    if (pdev->bitmap_format == BMF_16BPP) {
-        surf_obj = Copy16bppArea(pdev, src, &area);
-        if (!surf_obj) {
-            return FALSE;
-        }
-        src_pos.y = src_pos.y - area.top;
-        src_pos.x = src_pos.x - area.left;
-    } else {
-        surf_obj = surface->draw_area.surf_obj;
-    }
+    surf_obj = surface->draw_area.surf_obj;
 
     if (rop4 == 0xcccc) {
         ret = EngCopyBits(dest, surf_obj, clip, color_trans, dest_rect, &src_pos);
     } else {
         ret = EngBitBlt(dest, surf_obj, mask, clip, color_trans, dest_rect, &src_pos,
                         mask_pos, brush, brush_pos, rop4);
-    }
-
-    if (pdev->bitmap_format == BMF_16BPP) {
-        HSURF surf = surf_obj->hsurf;
-
-        EngUnlockSurface(surf_obj);
-        EngDeleteSurface(surf);
     }
 
     return ret;

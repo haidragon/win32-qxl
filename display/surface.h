@@ -43,7 +43,7 @@ enum {
     DEVICE_BITMAP_ALLOCATION_TYPE_VRAM,
 };
 
-BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, UINT32 cx, UINT32 cy, UINT32 stride,
+BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, ULONG format, UINT32 cx, UINT32 cy, UINT32 stride,
                     UINT32 surface_id);
 VOID FreeDrawArea(DrawArea *drawarea);
 
