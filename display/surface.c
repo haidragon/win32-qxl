@@ -93,11 +93,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
             break;
         case BMF_24BPP:
         case BMF_32BPP:
-            if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_SURF0) {
-                surface_format = SPICE_SURFACE_FMT_32_xRGB;
-            } else {
-                surface_format = SPICE_SURFACE_FMT_32_ARGB;
-            }
+            surface_format = SPICE_SURFACE_FMT_32_xRGB;
             depth = 32;
             break;
         case BMF_8BPP:
