@@ -1645,6 +1645,11 @@ BOOL APIENTRY DrvAlphaBlend(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLATEOBJ
             return FALSE;
         }
     }
+    drawable->u.alpha_blend.alpha_flags = 0;
+    if (src->iType != STYPE_BITMAP && 
+	bland->BlendFunction.AlphaFormat == AC_SRC_ALPHA)
+      drawable->u.alpha_blend.alpha_flags |= SPICE_ALPHA_FLAGS_SRC_SURFACE_HAS_ALPHA;
+    
     drawable->u.alpha_blend.alpha = bland->BlendFunction.SourceConstantAlpha;
     drawable->effect = QXL_EFFECT_BLEND;
 
