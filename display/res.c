@@ -1996,6 +1996,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
         internal = (InternalImage *)image_res->res;
 
         internal->image.descriptor.type = SPICE_IMAGE_TYPE_SURFACE;
+        internal->image.descriptor.flags = 0;
         *surface_dest = internal->image.surface_image.surface_id = GetSurfaceId(surf);
 
         *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
@@ -2153,6 +2154,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
         internal = (InternalImage *)image_res->res;
 
         internal->image.descriptor.type = SPICE_IMAGE_TYPE_SURFACE;
+        internal->image.descriptor.flags = 0;
         *surface_dest = internal->image.surface_image.surface_id = GetSurfaceId(surf);
 
         *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
