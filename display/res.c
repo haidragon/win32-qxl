@@ -2766,7 +2766,7 @@ static void FreeCursor(PDev *pdev, Resource *res)
     while (chunk_phys) {
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
-        FreeMem(pdev, res);
+        FreeMem(pdev, chunk);
         ONDBG(pdev->Res.num_cursor_pages--);
     }
 
