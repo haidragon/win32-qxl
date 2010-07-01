@@ -204,8 +204,8 @@ GDIINFO gdi_default = {
 
 DEVINFO dev_default = {
     GCAPS_ARBRUSHOPAQUE | GCAPS_ARBRUSHTEXT | GCAPS_ASYNCMOVE | /* GCAPS_BEZIERS | */
-    /*GCAPS_FONT_RASTERIZER |*/ /*for now GCAPS_GEOMETRICWIDE |*/ GCAPS_GRAY16 | GCAPS_OPAQUERECT |
-    /*GCAPS_VECTORFONT |*/ GCAPS_WINDINGFILL /*| GCAPS_LAYERED*/,
+    GCAPS_GRAY16 | GCAPS_OPAQUERECT |
+    GCAPS_WINDINGFILL /*| GCAPS_LAYERED*/,
     SYSTM_LOGFONT,      //lfDefaultFont
     HELVE_LOGFONT,      //lfAnsiVarFont
     COURI_LOGFONT,      //lfAnsiFixFont
@@ -1120,99 +1120,6 @@ FIX FlotaToFixed(FLOATL val, FLOATL scale)
     return ret;
 }
 
-static BOOL GetGeometricAttr(PDev *pdev, QXLDrawable *drawable, QXLLineAttr *q_line_attr,
-                            LINEATTRS *line_attr, XFORMOBJ *width_transform)
-{
-    ULONG save_buf_size;
-    FLOATOBJ float_obj;
-    PVOID fpu_buf;
-    XFORML xform;
-
-    ASSERT(pdev, width_transform);
-    ASSERT(pdev, LINE_CAP_ROUND == ENDCAP_ROUND && LINE_CAP_SQUARE == ENDCAP_SQUARE &&
-           LINE_CAP_BUTT == ENDCAP_BUTT && LINE_JOIN_ROUND == JOIN_ROUND &&
-           LINE_JOIN_BEVEL == JOIN_BEVEL && LINE_JOIN_MITER == JOIN_MITER);
-
-
-    save_buf_size = EngSaveFloatingPointState(NULL, 0);
-    if (!(fpu_buf = EngAllocMem(
-#if !(WINVER < 0x0501)
-                                FL_NONPAGED_MEMORY |
-#endif
-                                FL_ZERO_MEMORY,
-                                save_buf_size,
-                                ALLOC_TAG))) {
-        DEBUG_PRINT((pdev, 0, "%s: alloc mem failed\n", __FUNCTION__));
-        return FALSE;
-    }
-
-    if (!EngSaveFloatingPointState(fpu_buf, save_buf_size)) {
-        DEBUG_PRINT((pdev, 0, "%s: save fpu state failed\n", __FUNCTION__));
-        goto err1;
-    }
-
-    if (XFORMOBJ_iGetXform(width_transform ,&xform) == DDI_ERROR) {
-        DEBUG_PRINT((pdev, 0, "%s: err get xform\n", __FUNCTION__));
-        goto err2;
-    }
-
-    if (xform.eM11 != xform.eM22 || xform.eM12 != 0 || xform.eM21 != 0) {
-        DEBUG_PRINT((pdev, 0, "%s: complex\n", __FUNCTION__));
-        goto err2;
-    }
-
-    q_line_attr->join_style = (UINT8)line_attr->iJoin;
-    q_line_attr->end_style = (UINT8)line_attr->iEndCap;
-
-    FLOATOBJ_SetLong(&float_obj, 1);
-    q_line_attr->miter_limit = FlotaToFixed(line_attr->eMiterLimit,
-                                                                    FLOATOBJ_GetFloat(&float_obj));
-    q_line_attr->width = FlotaToFixed(line_attr->elWidth.e, xform.eM11);
-
-    if (line_attr->fl & LA_STYLED) {
-        FIX *style;
-        FIX *end;
-        PFLOAT_LONG src_style = line_attr->pstyle;
-        UINT32 nseg;
-
-        ASSERT(pdev, LA_STYLED == LINE_STYLED);
-        ASSERT(pdev, LA_STARTGAP == LINE_START_WITH_GAP);
-        q_line_attr->flags = (UINT8)(line_attr->fl & (LA_STYLED | LA_STARTGAP));
-        nseg = (line_attr->fl & LA_ALTERNATE) ? 2 : line_attr->cstyle;
-
-        if ( nseg > 100) {
-            goto err2;
-        }
-
-        if (!(style = (FIX *)QXLGetBuf(pdev, drawable, &q_line_attr->style,
-                                       nseg * sizeof(UINT32)))) {
-            goto err2;
-        }
-
-        if ((line_attr->fl & LA_ALTERNATE)) {
-            style[0] = style[1] = FlotaToFixed(FLOATOBJ_GetFloat(&float_obj), xform.eM11);
-        } else {
-            for ( end = style + nseg;  style < end; style++, src_style++) {
-                *style = FlotaToFixed(src_style->e, xform.eM11);
-            }
-        }
-        q_line_attr->style_nseg = (UINT8)nseg;
-    } else {
-        q_line_attr->flags = 0;
-        drawable->u.stroke.attr.style_nseg = 0;
-        drawable->u.stroke.attr.style = 0;
-    }
-    EngRestoreFloatingPointState(fpu_buf);
-    EngFreeMem(fpu_buf);
-    return TRUE;
-
-err2:
-    EngRestoreFloatingPointState(fpu_buf);
-err1:
-    EngFreeMem(fpu_buf);
-    return FALSE;
-}
-
 static BOOL GetCosmeticAttr(PDev *pdev, QXLDrawable *drawable, QXLLineAttr *q_line_attr,
                             LINEATTRS *line_attr)
 {
@@ -1288,10 +1195,7 @@ BOOL APIENTRY DrvStrokePath(SURFOBJ *surf, PATHOBJ *path, CLIPOBJ *clip, XFORMOB
         //return EngStrokePath(surf, path, clip, width_transform, brush, brush_pos, line_attr, mix);
     }
 
-    if (line_attr->elWidth.l == 0 && (line_attr->fl & LA_GEOMETRIC)) {
-        DEBUG_PRINT((pdev, 1, "%s: width == 0\n", __FUNCTION__));
-        return TRUE;
-    }
+    ASSERT(pdev, (line_attr->fl & LA_GEOMETRIC) == 0); /* We should not get these */
 
     PATHOBJ_vGetBounds(path, &fx_area);
     FXToRect(&area, &fx_area);
@@ -1334,9 +1238,7 @@ BOOL APIENTRY DrvStrokePath(SURFOBJ *surf, PATHOBJ *path, CLIPOBJ *clip, XFORMOB
 
     drawable->effect = (h_or_v_line) ? QXL_EFFECT_OPAQUE: QXL_EFFECT_BLEND;
 
-    if (((line_attr->fl & LA_GEOMETRIC) ?
-        !GetGeometricAttr(pdev, drawable, &drawable->u.stroke.attr, line_attr, width_transform) :
-        !GetCosmeticAttr(pdev, drawable, &drawable->u.stroke.attr, line_attr))){
+    if (!GetCosmeticAttr(pdev, drawable, &drawable->u.stroke.attr, line_attr)) {
         goto err;
     }
 
