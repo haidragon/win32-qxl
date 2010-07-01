@@ -697,7 +697,7 @@ static void FreePath(PDev *pdev, Resource *res)
 
 #define PATH_PREALLOC_PONTS 20
 #define PATH_MAX_ALLOC_PONTS 128
-#define PATH_ALLOC_SIZE (sizeof(Resource) + sizeof(QXLPath) + sizeof(SpicePathSeg) +\
+#define PATH_ALLOC_SIZE (sizeof(Resource) + sizeof(QXLPath) + sizeof(QXLPathSeg) +\
                          sizeof(POINTFIX) * PATH_PREALLOC_PONTS)
 
 
@@ -716,22 +716,22 @@ static void __GetPathCommon(PDev *pdev, PATHOBJ *path, QXLDataChunk **chunk_ptr,
     do {
         int pt_buf_size;
         UINT8 *pt_buf;
-        SpicePathSeg *seg;
+        QXLPathSeg *seg;
 
         more = PATHOBJ_bEnum(path, &data);
         if (data.count == 0) {
             break;
         }
 
-        if (end - now < sizeof(SpicePathSeg)) {
+        if (end - now < sizeof(QXLPathSeg)) {
             size_t alloc_size = MIN(data.count << 3, sizeof(POINTFIX) * PATH_MAX_ALLOC_PONTS);
-            alloc_size += sizeof(SpicePathSeg);
+            alloc_size += sizeof(QXLPathSeg);
             NEW_DATA_CHUNK(page_counter, alloc_size);
         }
-        seg = (SpicePathSeg*)now;
+        seg = (QXLPathSeg*)now;
         seg->flags = data.flags;
         seg->count = data.count;
-        now = seg->data;
+        now = (UINT8 *)seg->points;
         chunk->data_size += sizeof(*seg);
         *data_size +=  sizeof(*seg);
         pt_buf_size = data.count << 3;
@@ -832,17 +832,17 @@ static void FreeClipRects(PDev *pdev, Resource *res)
 
 #define RECTS_NUM_PREALLOC 8
 #define RECTS_ALLOC_SIZE (sizeof(Resource) + sizeof(QXLClipRects) + \
-                          sizeof(SpiceRect) * RECTS_NUM_PREALLOC)
+                          sizeof(QXLRect) * RECTS_NUM_PREALLOC)
 #define RECTS_NUM_ALLOC 20
-#define RECTS_CHUNK_ALLOC_SIZE (sizeof(QXLDataChunk) + sizeof(SpiceRect) * RECTS_NUM_ALLOC)
+#define RECTS_CHUNK_ALLOC_SIZE (sizeof(QXLDataChunk) + sizeof(QXLRect) * RECTS_NUM_ALLOC)
 
 static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
 {
     Resource *res;
     QXLClipRects *rects;
     QXLDataChunk *chunk;
-    SpiceRect *dest;
-    SpiceRect *dest_end;
+    QXLRect *dest;
+    QXLRect *dest_end;
     int more;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
@@ -858,7 +858,7 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
     chunk->prev_chunk = 0;
     chunk->next_chunk = 0;
 
-    dest = (SpiceRect *)chunk->data;
+    dest = (QXLRect *)chunk->data;
     dest_end = dest + ((RECTS_ALLOC_SIZE - sizeof(Resource) - sizeof(QXLClipRects)) >> 4);
 
     CLIPOBJ_cEnumStart(clip, TRUE, CT_RECTANGLES, CD_RIGHTDOWN, 0);
@@ -881,11 +881,11 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
                 chunk = (QXLDataChunk *)page;
                 chunk->data_size = 0;
                 chunk->next_chunk = 0;
-                dest = (SpiceRect *)chunk->data;
+                dest = (QXLRect *)chunk->data;
                 dest_end = dest + RECTS_NUM_ALLOC;
             }
             CopyRect(dest, now);
-            chunk->data_size += sizeof(SpiceRect);
+            chunk->data_size += sizeof(QXLRect);
         }
     } while (more);
     DEBUG_PRINT((pdev, 13, "%s: done, num_rects %d\n", __FUNCTION__, rects->num_rects));
@@ -907,15 +907,15 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
     if (clip->iDComplexity == DC_RECT) {
         QXLClipRects *rects;
         rects_res = (Resource *)AllocMem(pdev, sizeof(Resource) + sizeof(QXLClipRects) +
-                                         sizeof(SpiceRect));
+                                         sizeof(QXLRect));
         rects_res->refs = 1;
         rects_res->free = FreeClipRects;
         rects = (QXLClipRects *)rects_res->res;
         rects->num_rects = 1;
-        rects->chunk.data_size = sizeof(SpiceRect);
+        rects->chunk.data_size = sizeof(QXLRect);
         rects->chunk.prev_chunk = 0;
         rects->chunk.next_chunk = 0;
-        CopyRect((SpiceRect *)rects->chunk.data, &clip->rclBounds);
+        CopyRect((QXLRect *)rects->chunk.data, &clip->rclBounds);
     } else {
       rects_res = GetClipRects(pdev, clip);
     }
@@ -1978,7 +1978,7 @@ static int rgb32_data_has_alpha(int width, int height, int stride,
 }
 
 BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SURFOBJ *surf,
-                  SpiceRect *area, XLATEOBJ *color_trans, UINT32 *hash_key, BOOL use_cache,
+                  QXLRect *area, XLATEOBJ *color_trans, UINT32 *hash_key, BOOL use_cache,
                   INT32 *surface_dest)
 {
     Resource *image_res;
@@ -2137,7 +2137,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
 }
 
 BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys,
-                       SURFOBJ *surf, SpiceRect *area, INT32 *surface_dest)
+                       SURFOBJ *surf, QXLRect *area, INT32 *surface_dest)
 {
     Resource *image_res;
     InternalImage *internal;
@@ -2276,10 +2276,10 @@ BOOL QXLGetBitsFromCache(PDev *pdev, QXLDrawable *drawable, UINT32 hash_key, QXL
     return FALSE;
 }
 
-BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, SpiceQMask *qxl_mask, SURFOBJ *mask, POINTL *pos,
+BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, QXLQMask *qxl_mask, SURFOBJ *mask, POINTL *pos,
                 BOOL invers, LONG width, LONG height, INT32 *surface_dest)
 {
-    SpiceRect area;
+    QXLRect area;
 
     if (!mask) {
         qxl_mask->bitmap = 0;
@@ -2398,7 +2398,7 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
 
 static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS *glyps,
                                     QXLDataChunk **chunk_ptr, UINT8 **now_ptr,
-                                    UINT8 **end_ptr, int bpp, POINTL *delta, SpicePoint **str_pos)
+                                    UINT8 **end_ptr, int bpp, POINTL *delta, QXLPoint **str_pos)
 {
     GLYPHPOS *glyps_end = glyps + count;
     QXLDataChunk *chunk = *chunk_ptr;
@@ -2425,7 +2425,7 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
                 glyph->render_pos.x = glyps->ptl.x;
                 glyph->render_pos.y = glyps->ptl.y;
             }
-            *str_pos = &glyph->render_pos;
+            *str_pos = (QXLPoint *)&glyph->render_pos;
         } else {
             glyph->render_pos.x = glyps->ptl.x;
             glyph->render_pos.y = glyps->ptl.y;
@@ -2470,7 +2470,7 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
 
 static _inline void add_vec_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS *glyps,
                                    QXLDataChunk **chunk_ptr, UINT8 **now_ptr, UINT8 **end_ptr,
-                                   POINTL *delta, SpicePoint  **str_pos)
+                                   POINTL *delta, QXLPoint  **str_pos)
 {
     GLYPHPOS *glyps_end = glyps + count;
     QXLDataChunk *chunk = *chunk_ptr;
@@ -2498,7 +2498,7 @@ static _inline void add_vec_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYP
                 glyph->render_pos.x = glyps->ptl.x;
                 glyph->render_pos.y = glyps->ptl.y;
             }
-            *str_pos = &glyph->render_pos;
+            *str_pos = (QXLPoint *)&glyph->render_pos;
         } else {
             glyph->render_pos.x = glyps->ptl.x;
             glyph->render_pos.y = glyps->ptl.y;
@@ -2517,7 +2517,7 @@ static _inline void add_vec_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYP
 
 static _inline BOOL add_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS *glyps,
                                QXLDataChunk **chunk, UINT8 **now, UINT8 **end, POINTL *delta,
-                               SpicePoint  **str_pos)
+                               QXLPoint  **str_pos)
 {
     if (str->flags & SPICE_STRING_FLAGS_RASTER_A1) {
         add_rast_glyphs(pdev, str, count, glyps, chunk, now, end, 1, delta, str_pos);
@@ -2564,7 +2564,7 @@ BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *str_phys, FONTOBJ
     static int id_QXLGetStr = 0;
     POINTL  delta;
     POINTL  *delta_ptr;
-    SpicePoint  *str_pos;
+    QXLPoint  *str_pos;
 
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
 

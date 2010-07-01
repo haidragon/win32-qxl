@@ -270,7 +270,7 @@ typedef struct PDev {
     UINT32 *dev_update_id;
 
     UINT32 update_area_port;
-    SpiceRect *update_area;
+    QXLRect *update_area;
     UINT32 *update_surface;
 
     UINT32 *mm_clock;

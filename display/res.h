@@ -32,17 +32,17 @@ void QXLGetSurface(PDev *pdev, QXLPHYSICAL *surface_phys, UINT32 x, UINT32 y, UI
 void QXLGetDelSurface(PDev *pdev, QXLSurfaceCmd *surface, UINT32 surface_id, UINT8 allocation_type);
 void QXLDelSurface(PDev *pdev, UINT8 *base_mem, UINT8 allocation_type);
 BOOL QXLGetPath(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *path_phys, PATHOBJ *path);
-BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, SpiceQMask *qxl_mask, SURFOBJ *mask, POINTL *pos,
+BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, QXLQMask *qxl_mask, SURFOBJ *mask, POINTL *pos,
                 BOOL invers, LONG width, LONG height, INT32 *surface_dest);
-BOOL QXLGetBrush(PDev *pdev, QXLDrawable *drawable, SpiceBrush *qxl_brush,
+BOOL QXLGetBrush(PDev *pdev, QXLDrawable *drawable, QXLBrush *qxl_brush,
                             BRUSHOBJ *brush, POINTL *brush_pos, INT32 *surface_dest,
-                            SpiceRect *surface_rect);
+                            QXLRect *surface_rect);
 BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SURFOBJ *surf,
-                  SpiceRect *area, XLATEOBJ *color_trans, UINT32 *hash_key, BOOL use_cache,
+                  QXLRect *area, XLATEOBJ *color_trans, UINT32 *hash_key, BOOL use_cache,
                   INT32 *surface_dest);
 BOOL QXLGetBitsFromCache(PDev *pdev, QXLDrawable *drawable, UINT32 hash_key, QXLPHYSICAL *image_phys);
 BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SURFOBJ *surf,
-                       SpiceRect *area, INT32 *surface_dest);
+                       QXLRect *area, INT32 *surface_dest);
 BOOL CheckIfCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans);
 UINT8 *QXLGetBuf(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *buf_phys, UINT32 size);
 BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *str_phys, FONTOBJ *font, STROBJ *str);

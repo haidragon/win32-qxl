@@ -409,7 +409,7 @@ static BOOL DoFill(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, BR
         return FALSE;
     }
 
-    drawable->u.fill.rop_decriptor = rop_info->method_data;
+    drawable->u.fill.rop_descriptor = rop_info->method_data;
 
     drawable->effect = mask ? QXL_EFFECT_BLEND : rop_info->effect;
 
@@ -422,7 +422,7 @@ static BOOL DoFill(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, BR
 }
 
 static BOOL GetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *bitmap_phys, SURFOBJ *surf,
-                      SpiceRect *area, XLATEOBJ *color_trans, BOOL use_cache, INT32 *surface_dest)
+                      QXLRect *area, XLATEOBJ *color_trans, BOOL use_cache, INT32 *surface_dest)
 {
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
     if (surf->iType != STYPE_BITMAP) {
@@ -454,7 +454,7 @@ static _inline UINT8 GdiScaleModeToQxl(ULONG scale_mode)
 
 static BOOL DoOpaque(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SURFOBJ *src,
                      RECTL *src_rect, XLATEOBJ *color_trans, BRUSHOBJ *brush, POINTL *brush_pos,
-                     UINT16 rop_decriptor, SURFOBJ *mask, POINTL *mask_pos, BOOL invers_mask,
+                     UINT16 rop_descriptor, SURFOBJ *mask, POINTL *mask_pos, BOOL invers_mask,
                      ULONG scale_mode)
 {
     QXLDrawable *drawable;
@@ -490,7 +490,7 @@ static BOOL DoOpaque(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, 
     }
     CopyRect(&drawable->surfaces_rects[2], src_rect);
 
-    drawable->u.opaque.rop_decriptor = rop_decriptor;
+    drawable->u.opaque.rop_descriptor = rop_descriptor;
     drawable->effect = mask ? QXL_EFFECT_BLEND : QXL_EFFECT_OPAQUE;
     PushDrawable(pdev, drawable);
     return TRUE;
@@ -610,7 +610,7 @@ static BOOL TestSplitClips(PDev *pdev, SURFOBJ *src, RECTL *src_rect, CLIPOBJ *c
 
 static _inline BOOL DoPartialCopy(PDev *pdev, UINT32 surface_id, SURFOBJ *src, RECTL *src_rect,
                                   RECTL *area_rect, RECTL *clip_rect, XLATEOBJ *color_trans,
-                                  ULONG scale_mode, UINT16 rop_decriptor)
+                                  ULONG scale_mode, UINT16 rop_descriptor)
 {
     QXLDrawable *drawable;
     RECTL clip_area;
@@ -632,7 +632,7 @@ static _inline BOOL DoPartialCopy(PDev *pdev, UINT32 surface_id, SURFOBJ *src, R
     drawable->effect = QXL_EFFECT_OPAQUE;
     drawable->u.copy.scale_mode = GdiScaleModeToQxl(scale_mode);
     drawable->u.copy.mask.bitmap = 0;
-    drawable->u.copy.rop_decriptor = rop_decriptor;
+    drawable->u.copy.rop_descriptor = rop_descriptor;
 
     drawable->u.copy.src_area.top = src_rect->top + (clip_area.top - area_rect->top);
     drawable->u.copy.src_area.bottom = drawable->u.copy.src_area.top + clip_area.bottom -
@@ -652,7 +652,7 @@ static _inline BOOL DoPartialCopy(PDev *pdev, UINT32 surface_id, SURFOBJ *src, R
 }
 
 static BOOL DoCopy(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SURFOBJ *src,
-                   RECTL *src_rect, XLATEOBJ *color_trans, UINT16 rop_decriptor, SURFOBJ *mask,
+                   RECTL *src_rect, XLATEOBJ *color_trans, UINT16 rop_descriptor, SURFOBJ *mask,
                    POINTL *mask_pos, BOOL invers_mask, ULONG scale_mode)
 {
     QXLDrawable *drawable;
@@ -676,7 +676,7 @@ static BOOL DoCopy(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SU
         !CheckIfCacheImage(pdev, src, color_trans)) {
         if (clip->iDComplexity == DC_RECT) {
             if (!DoPartialCopy(pdev, surface_id, src, src_rect, area, &clip->rclBounds, color_trans,
-                               scale_mode, rop_decriptor)) {
+                               scale_mode, rop_descriptor)) {
                 return FALSE;
             }
         } else {
@@ -694,7 +694,7 @@ static BOOL DoCopy(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SU
                 more = CLIPOBJ_bEnum(clip, sizeof(buf), (ULONG *)&buf);
                 for(now = buf.rects, end = now + buf.count; now < end; now++) {
                     if (!DoPartialCopy(pdev, surface_id, src, src_rect, area, now, color_trans,
-                                       scale_mode, rop_decriptor)) {
+                                       scale_mode, rop_descriptor)) {
                         return FALSE;
                     }
                 }
@@ -728,7 +728,7 @@ static BOOL DoCopy(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SU
     }
     CopyRect(&drawable->surfaces_rects[1], src_rect);
 
-    drawable->u.copy.rop_decriptor = rop_decriptor;
+    drawable->u.copy.rop_descriptor = rop_descriptor;
     PushDrawable(pdev, drawable);
     DEBUG_PRINT((pdev, 7, "%s: done\n", __FUNCTION__));
     return TRUE;
@@ -797,7 +797,7 @@ static BOOL DoBlend(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, S
     }
     CopyRect(&drawable->surfaces_rects[1], src_rect);
 
-    drawable->u.blend.rop_decriptor = rop_info->method_data;
+    drawable->u.blend.rop_descriptor = rop_info->method_data;
     drawable->effect = mask ? QXL_EFFECT_BLEND : rop_info->effect;
     PushDrawable(pdev, drawable);
     return TRUE;

@@ -316,11 +316,11 @@ BOOL APIENTRY DrvRealizeBrush(BRUSHOBJ *brush, SURFOBJ *target, SURFOBJ *pattern
 
 static _inline BOOL GetPattern(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *pattern,
                                InternalBrush *brush, INT32 *surface_dest,
-                               SpiceRect *surface_rect)
+                               QXLRect *surface_rect)
 {
     HSURF hsurf;
     SURFOBJ *surf_obj;
-    SpiceRect area;
+    QXLRect area;
     UINT32 key;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
@@ -363,9 +363,9 @@ error_1:
 }
 
 
-BOOL QXLGetBrush(PDev *pdev, QXLDrawable *drawable, SpiceBrush *qxl_brush,
+BOOL QXLGetBrush(PDev *pdev, QXLDrawable *drawable, QXLBrush *qxl_brush,
                  BRUSHOBJ *brush, POINTL *brush_pos, INT32 *surface_dest,
-                 SpiceRect *surface_rect)
+                 QXLRect *surface_rect)
 {
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
     ASSERT(pdev, brush);

@@ -1120,7 +1120,7 @@ FIX FlotaToFixed(FLOATL val, FLOATL scale)
     return ret;
 }
 
-static BOOL GetGeometricAttr(PDev *pdev, QXLDrawable *drawable, SpiceLineAttr *q_line_attr,
+static BOOL GetGeometricAttr(PDev *pdev, QXLDrawable *drawable, QXLLineAttr *q_line_attr,
                             LINEATTRS *line_attr, XFORMOBJ *width_transform)
 {
     ULONG save_buf_size;
@@ -1213,7 +1213,7 @@ err1:
     return FALSE;
 }
 
-static BOOL GetCosmeticAttr(PDev *pdev, QXLDrawable *drawable, SpiceLineAttr *q_line_attr,
+static BOOL GetCosmeticAttr(PDev *pdev, QXLDrawable *drawable, QXLLineAttr *q_line_attr,
                             LINEATTRS *line_attr)
 {
     ASSERT(pdev, LINE_CAP_ROUND == ENDCAP_ROUND && LINE_CAP_SQUARE == ENDCAP_SQUARE &&
