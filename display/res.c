@@ -2467,54 +2467,6 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
     *end_ptr = end;
     DEBUG_PRINT((pdev, 14, "%s: done\n", __FUNCTION__));
 }
-
-static _inline void add_vec_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS *glyps,
-                                   QXLDataChunk **chunk_ptr, UINT8 **now_ptr, UINT8 **end_ptr,
-                                   POINTL *delta, QXLPoint  **str_pos)
-{
-    GLYPHPOS *glyps_end = glyps + count;
-    QXLDataChunk *chunk = *chunk_ptr;
-    UINT8 *now = *now_ptr;
-    UINT8 *end = *end_ptr;
-
-    DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
-
-    for (; glyps < glyps_end; glyps++) {
-        SpiceVectorGlyph *glyph;
-
-        if (end - now < sizeof(*glyph)) {
-            NEW_DATA_CHUNK(&pdev->Res.num_glyphs_pages, PAGE_SIZE);
-        }
-        chunk->data_size += sizeof(*glyph);
-        str->data_size += sizeof(*glyph);
-        glyph = (SpiceVectorGlyph *)now;
-        now += sizeof(*glyph);
-
-        if (delta) {
-            if (*str_pos) {
-                glyph->render_pos.x = (*str_pos)->x + delta->x;
-                glyph->render_pos.y = (*str_pos)->y + delta->y;
-            } else {
-                glyph->render_pos.x = glyps->ptl.x;
-                glyph->render_pos.y = glyps->ptl.y;
-            }
-            *str_pos = (QXLPoint *)&glyph->render_pos;
-        } else {
-            glyph->render_pos.x = glyps->ptl.x;
-            glyph->render_pos.y = glyps->ptl.y;
-        }
-        glyph->data_size = 0;
-        GetPathCommon(pdev, glyps->pgdf->ppo, &chunk, &now, &end, &glyph->data_size,
-                      &pdev->Res.num_glyphs_pages);
-        str->data_size += glyph->data_size;
-    }
-    *chunk_ptr = chunk;
-    *now_ptr = now;
-    *end_ptr = end;
-
-    DEBUG_PRINT((pdev, 14, "%s: done\n", __FUNCTION__));
-}
-
 static _inline BOOL add_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS *glyps,
                                QXLDataChunk **chunk, UINT8 **now, UINT8 **end, POINTL *delta,
                                QXLPoint  **str_pos)
@@ -2523,10 +2475,6 @@ static _inline BOOL add_glyphs(PDev *pdev, QXLString *str, ULONG count, GLYPHPOS
         add_rast_glyphs(pdev, str, count, glyps, chunk, now, end, 1, delta, str_pos);
     } else if (str->flags & SPICE_STRING_FLAGS_RASTER_A4) {
         add_rast_glyphs(pdev, str, count, glyps, chunk, now, end, 4, delta, str_pos);
-    } else {
-        DEBUG_PRINT((pdev, 0, "%s: vector: untested path, doing nothing!!!\n", __FUNCTION__));
-        return FALSE;
-        add_vec_glyphs(pdev, str, count, glyps, chunk, now, end, delta, str_pos);
     }
     return TRUE;
 }
