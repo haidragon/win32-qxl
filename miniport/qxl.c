@@ -323,13 +323,13 @@ VP_STATUS Prob(QXLExtension *dev, VIDEO_PORT_CONFIG_INFO *conf_info,
         return ERROR_INVALID_PARAMETER;
     }
 
-    if (pci_conf.DeviceID != QXL_DEVICE_ID) {
+    if (pci_conf.DeviceID != QXL_DEVICE_ID_DEVEL) {
         DEBUG_PRINT((0,  "%s: bad vendor id 0x%x expectes 0x%x\n",
                      __FUNCTION__, pci_conf.DeviceID, QXL_DEVICE_ID));
         return ERROR_INVALID_PARAMETER;
     }
 
-    if (pci_conf.RevisionID != QXL_REVISION) {
+    if (pci_conf.RevisionID != QXL_REVISION_DEVEL) {
         DEBUG_PRINT((0,  "%s: bad revision 0x%x expectes 0x%x\n",
                      __FUNCTION__, pci_conf.RevisionID, QXL_REVISION));
         return ERROR_INVALID_PARAMETER;
