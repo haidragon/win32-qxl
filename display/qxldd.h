@@ -138,7 +138,7 @@ typedef struct UpdateTrace {
 
 typedef struct PMemSlot {
     MemSlot slot;
-    SPICE_ADDRESS high_bits;
+    QXLPHYSICAL high_bits;
 } PMemSlot;
 
 typedef struct DevResDynamic {
@@ -261,7 +261,7 @@ typedef struct PDev {
     UINT8 *slots_generation;
     UINT64 *ram_slot_start;
     UINT64 *ram_slot_end;
-    SPICE_ADDRESS va_slot_mask;
+    QXLPHYSICAL va_slot_mask;
 
     UINT32 num_io_pages;
     UINT8 *io_pages_virt;

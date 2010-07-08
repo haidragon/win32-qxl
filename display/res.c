@@ -1324,7 +1324,7 @@ typedef struct InternalPalette {
     UINT32 refs;
     struct InternalPalette *next;
     RingItem lru_link;
-    SpicePalette palette;
+    QXLPalette palette;
 } InternalPalette;
 
 #define PALETTE_HASH_VAL(unique) ((int)(unique) & PALETTE_HASH_NASKE)
@@ -1413,7 +1413,7 @@ static _inline void PaletteCacheAdd(PDev *pdev, InternalPalette *palette)
 }
 
 
-static _inline void GetPallette(PDev *pdev, SpiceBitmap *bitmap, XLATEOBJ *color_trans)
+static _inline void GetPallette(PDev *pdev, QXLBitmap *bitmap, XLATEOBJ *color_trans)
 {
     InternalPalette *internal;
 
@@ -1612,8 +1612,8 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
     }
 
     if (internal->image.bitmap.palette) {
-        SpicePalette *palette = (SpicePalette *)VA(pdev, internal->image.bitmap.palette,
-                                                   pdev->main_mem_slot);
+        QXLPalette *palette = (QXLPalette *)VA(pdev, internal->image.bitmap.palette,
+					       pdev->main_mem_slot);
         ReleasePalette(pdev, CONTAINEROF(palette, InternalPalette, palette));
     }
 
@@ -2411,7 +2411,7 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     for (; glyps < glyps_end; glyps++) {
-        SpiceRasterGlyph *glyph;
+        QXLRasterGlyph *glyph;
         UINT8 *line;
         UINT8 *end_line;
         UINT32 stride;
@@ -2420,7 +2420,7 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
             NEW_DATA_CHUNK(&pdev->Res.num_glyphs_pages, PAGE_SIZE);
         }
 
-        glyph = (SpiceRasterGlyph *)now;
+        glyph = (QXLRasterGlyph *)now;
         if (delta) {
             if (*str_pos) {
                 glyph->render_pos.x = (*str_pos)->x + delta->x;

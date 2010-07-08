@@ -634,7 +634,7 @@ BOOL SetHardwareMode(PDev *pdev)
 
 static VOID UpdateMainSlot(PDev *pdev, MemSlot *slot)
 {
-    SPICE_ADDRESS high_bits;
+    QXLPHYSICAL high_bits;
 
 
     pdev->mem_slots[pdev->main_mem_slot].slot = *slot;
@@ -696,7 +696,7 @@ BOOL PrepareHardware(PDev *pdev)
     VIDEO_MEMORY_INFORMATION video_mem_Info;
     DWORD length;
     QXLDriverInfo dev_info;
-    SPICE_ADDRESS high_bits;
+    QXLPHYSICAL high_bits;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
