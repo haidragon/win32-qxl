@@ -242,9 +242,6 @@ typedef struct PDev {
     PEVENT cursor_event;
     PEVENT sleep_event;
 
-    HSURF draw_bitmap;
-    SURFOBJ *draw_surf;
-
     UINT32 log_port;
     UINT8 *log_buf;
     UINT32 *log_level;

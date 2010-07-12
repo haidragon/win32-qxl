@@ -929,21 +929,13 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
     DisableQXLPrimarySurface(pdev);
-    //DisableQXLAllSurfaces(pdev);
 
     UnmapFB(pdev);
 
     if (pdev->surf) {
         DeleteDeviceBitmap(pdev, 0, DEVICE_BITMAP_ALLOCATION_TYPE_SURF0);
+        EngDeleteSurface(pdev->surf);
         pdev->surf = NULL;
-    }
-
-    if (pdev->draw_surf) {
-        drawarea.bitmap = pdev->draw_bitmap;
-        drawarea.surf_obj = pdev->draw_surf;
-        FreeDrawArea(&drawarea);
-        pdev->draw_surf = NULL;
-        pdev->draw_bitmap = NULL;
     }
 
     if (pdev->surfaces_info) {
