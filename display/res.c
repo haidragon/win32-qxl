@@ -322,7 +322,7 @@ void CleanGlobalRes()
 {
     UINT32 i;
 
-    if (!global_res) {
+    if (global_res) {
         for (i = 0; i < num_global_res; ++i) {
             if (global_res[i].dynamic) {
                 EngFreeMem(global_res[i].dynamic);
