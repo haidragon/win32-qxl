@@ -28,6 +28,8 @@
 #include "surface.h"
 #include "dd.h"
 #include "rop.h"
+#include "devioctl.h"
+#include "ntddvdeo.h"
 
 #if (WINVER < 0x0501)
 #define WAIT_FOR_EVENT(pdev, event, timeout) (pdev)->WaitForEvent(event, timeout)
@@ -397,6 +399,8 @@ static void InitRes(PDev *pdev)
     RtlZeroMemory(pdev->Res.palette_cache, sizeof(pdev->Res.palette_cache));
     RingInit(&pdev->Res.dynamic->palette_lru);
     pdev->Res.num_palettes = 0;
+    
+    pdev->Res.driver = pdev->driver;
 
     ONDBG(pdev->Res.num_outputs = 0);
     ONDBG(pdev->Res.num_path_pages = 0);
@@ -3156,5 +3160,22 @@ void CheckAndSetSSE2()
     }
 }
 
+void ResetAllDevices()
+{
+    UINT32 i;
+    EngAcquireSemaphore(res_sem);
 
+    for (i = 0; i < num_global_res; i++) {
+        if (global_res[i].driver) {
+            DWORD length;
+            if (EngDeviceIoControl(global_res[i].driver, IOCTL_VIDEO_RESET_DEVICE,
+                                   NULL, 0, NULL, 0, &length)) {
+                DEBUG_PRINT((NULL, 0, "%s: reset to device failed 0x%lx\n",
+                            __FUNCTION__, global_res[i].driver));
+                
+            }
+        }
+    }
 
+    EngReleaseSemaphore(res_sem);
+}

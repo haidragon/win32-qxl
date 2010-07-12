@@ -168,6 +168,7 @@ typedef struct DevRes {
 
     UINT8 *surfaces_used;
 
+    HANDLE driver;
 #ifdef DBG
     int num_free_pages;
     int num_outputs;

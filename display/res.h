@@ -63,4 +63,6 @@ void ResDestroy(PDev *pdev);
 void ResInitGlobals();
 void ResDestroyGlobals();
 void CheckAndSetSSE2();
+void ResetAllDevices();
+
 #endif

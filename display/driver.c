@@ -256,6 +256,7 @@ BOOL DrvEnableDriver(ULONG engine_version, ULONG enable_data_size, PDRVENABLEDAT
 VOID DrvDisableDriver(VOID)
 {
     DEBUG_PRINT((NULL, 1, "%s\n", __FUNCTION__));
+    ResetAllDevices();
     ResDestroyGlobals();
     CleanGlobalRes();
 }
