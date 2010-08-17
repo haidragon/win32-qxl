@@ -35,7 +35,6 @@
 #include "mspace.h"
 #include "res.h"
 #include "surface.h"
-#include "dd.h"
 
 #define DEVICE_NAME L"qxldd"
 
@@ -64,10 +63,6 @@ static DRVFN drv_calls[] = {
     {INDEX_DrvAlphaBlend, (PFN)DrvAlphaBlend},
     {INDEX_DrvCreateDeviceBitmap, (PFN)DrvCreateDeviceBitmap},
     {INDEX_DrvDeleteDeviceBitmap, (PFN)DrvDeleteDeviceBitmap},
-
-    {INDEX_DrvGetDirectDrawInfo, (PFN)DrvGetDirectDrawInfo},
-    {INDEX_DrvEnableDirectDraw, (PFN)DrvEnableDirectDraw},
-    {INDEX_DrvDisableDirectDraw, (PFN)DrvDisableDirectDraw},
 
 #ifdef CALL_TEST
     {INDEX_DrvFillPath, (PFN)DrvFillPath},
@@ -650,8 +645,8 @@ static VOID UpdateMainSlot(PDev *pdev, MemSlot *slot)
 
 static void RemoveVRamSlot(PDev *pdev)
 {
-    WRITE_PORT_UCHAR(pdev->memslot_del_port, pdev->dd_mem_slot);
-    pdev->dd_slot_initialized = FALSE;
+    WRITE_PORT_UCHAR(pdev->memslot_del_port, pdev->vram_mem_slot);
+    pdev->vram_slot_initialized = FALSE;
 }
 
 static BOOLEAN CreateVRamSlot(PDev *pdev)
@@ -672,7 +667,7 @@ static BOOLEAN CreateVRamSlot(PDev *pdev)
 
     WRITE_PORT_UCHAR(pdev->memslot_add_port, slot_id);
 
-    pdev->dd_mem_slot = slot_id;
+    pdev->vram_mem_slot = slot_id;
 
     pdev->mem_slots[slot_id].slot.generation = *pdev->slots_generation;
     pdev->mem_slots[slot_id].slot.start_phys_addr = pdev->fb_phys;
@@ -685,7 +680,7 @@ static BOOLEAN CreateVRamSlot(PDev *pdev)
     high_bits <<= (64 - (pdev->slot_gen_bits + pdev->slot_id_bits));
     pdev->mem_slots[slot_id].high_bits = high_bits;
 
-    pdev->dd_slot_initialized = TRUE;
+    pdev->vram_slot_initialized = TRUE;
 
     return TRUE;
 }
@@ -801,8 +796,6 @@ BOOL PrepareHardware(PDev *pdev)
     pdev->primary_surface_create = dev_info.primary_surface_create;
 
     pdev->dev_id = dev_info.dev_id;
-
-    pdev->dd_initialized = FALSE;
 
     CreateVRamSlot(pdev);
 
@@ -1265,8 +1258,7 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
 
     pdev = (PDev *)dhpdev;
 
-    if (!pdev->dd_initialized || !pdev->dd_slot_initialized ||
-        pdev->bitmap_format != format) {
+    if (!pdev->vram_slot_initialized || pdev->bitmap_format != format) {
         return 0;
     }
 

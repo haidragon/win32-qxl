@@ -26,7 +26,6 @@
 #include "quic.h"
 #include "murmur_hash2a.h"
 #include "surface.h"
-#include "dd.h"
 #include "rop.h"
 #include "devioctl.h"
 #include "ntddvdeo.h"
@@ -36,6 +35,8 @@
 #else
 #define WAIT_FOR_EVENT(pdev, event, timeout) EngWaitForSingleObject(event, timeout)
 #endif
+
+#define SURFACE_ALLOC_RELEASE_BUNCH_SIZE 3
 
 static _inline QXLPHYSICAL PA(PDev *pdev, PVOID virt, UINT8 slot_id)
 {
@@ -69,7 +70,7 @@ struct Resource {
     UINT8 res[0];
 };
 
-static void FreeMem(PDev* pdev, void *ptr);
+static void FreeMem(PDev* pdev, UINT32 mspace_type, void *ptr);
 static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable);
 
 
@@ -117,7 +118,7 @@ UINT64 ReleaseOutput(PDev *pdev, UINT64 output_id)
         RELEASE_RES(pdev, *now);
     }
     next = *(UINT64*)output->data;
-    FreeMem(pdev, output);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, output);
     DEBUG_PRINT((pdev, 10, "%s done\n", __FUNCTION__));
     ONDBG(pdev->Res.num_outputs--); //todo: atomic
     return next;
@@ -284,36 +285,59 @@ static void WaitForReleaseRing(PDev* pdev)
     DEBUG_PRINT((pdev, 16, "%s: 0x%lx, done\n", __FUNCTION__, pdev));
 }
 
-static void *AllocMem(PDev* pdev, size_t size)
+// todo: separate VRAM releases from DEVRAM releases
+#define AllocMem(pdev, mspace_type, size) __AllocMem(pdev, mspace_type, size, TRUE, 1)
+static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size,
+                        BOOL force, INT32 release_bunch)
 {
     UINT8 *ptr;
 
-    ASSERT(pdev, pdev && pdev->Res._mspace);
+    ASSERT(pdev, pdev && pdev->Res.mspaces[mspace_type]._mspace);
     DEBUG_PRINT((pdev, 12, "%s: 0x%lx size %u\n", __FUNCTION__, pdev, size));
 
     EngAcquireSemaphore(pdev->malloc_sem);
-    while (!(ptr = mspace_malloc(pdev->Res._mspace, size))) {
+    while (!(ptr = mspace_malloc(pdev->Res.mspaces[mspace_type]._mspace, size))) {
         int notify;
-        if (pdev->Res.free_outputs) {
+        int num_to_release = release_bunch;
+
+        while (pdev->Res.free_outputs && num_to_release) {
             pdev->Res.free_outputs = ReleaseOutput(pdev, pdev->Res.free_outputs);
+            num_to_release--;
+        }
+
+        if (!num_to_release) {
             continue;
         }
-        WaitForReleaseRing(pdev);
+
+        if (force) {
+            WaitForReleaseRing(pdev);
+        } else {
+            if (SPICE_RING_IS_EMPTY(pdev->release_ring)) {
+                break;
+            }
+        }
+
         pdev->Res.free_outputs = *SPICE_RING_CONS_ITEM(pdev->release_ring);
         SPICE_RING_POP(pdev->release_ring, notify);
+
+        while (pdev->Res.free_outputs && num_to_release) {
+            pdev->Res.free_outputs = ReleaseOutput(pdev, pdev->Res.free_outputs);
+            num_to_release--;
+        }
     }
     EngReleaseSemaphore(pdev->malloc_sem);
-    ASSERT(pdev, ptr >= pdev->Res.mspace_start && ptr < pdev->Res.mspace_end);
+    ASSERT(pdev, (!ptr && !force) || (ptr >= pdev->Res.mspaces[mspace_type].mspace_start &&
+                                      ptr < pdev->Res.mspaces[mspace_type].mspace_end));
     DEBUG_PRINT((pdev, 13, "%s: 0x%lx done 0x%x\n", __FUNCTION__, pdev, ptr));
     return ptr;
 }
 
-static void FreeMem(PDev* pdev, void *ptr)
+static void FreeMem(PDev* pdev, UINT32 mspace_type, void *ptr)
 {
-    ASSERT(pdev, pdev && pdev->Res._mspace);
-    ASSERT(pdev, (UINT8 *)ptr >= pdev->Res.mspace_start && (UINT8 *)ptr <
-                          pdev->Res.mspace_end);
-    mspace_free(pdev->Res._mspace, ptr);
+    ASSERT(pdev, pdev && pdev->Res.mspaces[mspace_type]._mspace);
+    ASSERT(pdev, (UINT8 *)ptr >= pdev->Res.mspaces[mspace_type].mspace_start && 
+                 (UINT8 *)ptr < pdev->Res.mspaces[mspace_type].mspace_end);
+    mspace_free(pdev->Res.mspaces[mspace_type]._mspace, ptr);
 }
 
 DevRes *global_res = NULL;
@@ -354,11 +378,11 @@ void InitGlobalRes()
     }
 }
 
-static void InitMspace(DevRes *res, UINT8 *io_pages_virt, size_t capacity)
+static void InitMspace(DevRes *res, UINT32 mspace_type, UINT8 *io_pages_virt, size_t capacity)
 {
-    res->_mspace = create_mspace_with_base(io_pages_virt, capacity, 0, NULL);
-    res->mspace_start = io_pages_virt;
-    res->mspace_end = io_pages_virt + capacity;
+    res->mspaces[mspace_type]._mspace = create_mspace_with_base(io_pages_virt, capacity, 0, NULL);
+    res->mspaces[mspace_type].mspace_start = io_pages_virt;
+    res->mspaces[mspace_type].mspace_end = io_pages_virt + capacity;
 }
 
 static void InitRes(PDev *pdev)
@@ -377,7 +401,8 @@ static void InitRes(PDev *pdev)
     }
 
     pdev->Res.free_outputs = 0;
-    InitMspace(&pdev->Res, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
+    InitMspace(&pdev->Res, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
+    InitMspace(&pdev->Res, MSPACE_TYPE_VRAM, pdev->fb, pdev->fb_size);
     pdev->Res.update_id = *pdev->dev_update_id;
 
     RtlZeroMemory(pdev->Res.image_key_lookup,
@@ -480,7 +505,7 @@ static QXLDrawable *GetDrawable(PDev *pdev)
 {
     QXLOutput *output;
 
-    output = (QXLOutput *)AllocMem(pdev, sizeof(QXLOutput) + sizeof(QXLDrawable));
+    output = (QXLOutput *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(QXLOutput) + sizeof(QXLDrawable));
     output->num_res = 0;
     ((QXLDrawable *)output->data)->release_info.id = (UINT64)output;
     DEBUG_PRINT((pdev, 9, "%s 0x%x\n", __FUNCTION__, output));
@@ -528,7 +553,7 @@ static QXLSurfaceCmd *GetSurfaceCmd(PDev *pdev)
 {
     QXLOutput *output;
 
-    output = (QXLOutput *)AllocMem(pdev, sizeof(QXLOutput) + sizeof(QXLSurfaceCmd));
+    output = (QXLOutput *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(QXLOutput) + sizeof(QXLSurfaceCmd));
     output->num_res = 0;
     ((QXLSurfaceCmd *)output->data)->release_info.id = (UINT64)output;
     DEBUG_PRINT((pdev, 9, "%s 0x%x\n", __FUNCTION__, output));
@@ -575,19 +600,15 @@ _inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT
         *stride = x * depth / 8;
         break;
     case DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM:
-        *base_mem = AllocMem(pdev, x * y * depth / 8);
+        *base_mem = AllocMem(pdev, MSPACE_TYPE_DEVRAM, x * y * depth / 8);
         *phys_mem = PA(pdev, *base_mem, pdev->main_mem_slot);
         *stride = x * depth / 8;
         break;
     case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM: { 
-        SURFACEALIGNMENT surfacealignment;
-
-        memset(&surfacealignment, 0, sizeof(surfacealignment));
-        surfacealignment.Linear.dwStartAlignment = 4;
-        surfacealignment.Linear.dwPitchAlignment = 4;
-        *base_mem = (UINT8 *)HeapVidMemAllocAligned((LPVIDMEM)pdev->pvmList, x * depth / 8, y,
-                                                    &surfacealignment, stride);
-        *phys_mem = PA(pdev, (PVOID)((UINT64)*base_mem), pdev->dd_mem_slot);
+        *base_mem = __AllocMem(pdev, MSPACE_TYPE_VRAM, x * y * depth / 8, FALSE,
+                               SURFACE_ALLOC_RELEASE_BUNCH_SIZE);
+        *phys_mem = PA(pdev, (PVOID)((UINT64)*base_mem), pdev->vram_mem_slot);
+        *stride = x * depth / 8;
         break;
     }
     default:
@@ -604,7 +625,9 @@ void QXLGetSurface(PDev *pdev, QXLPHYSICAL *surface_phys, UINT32 x, UINT32 y, UI
 void QXLDelSurface(PDev *pdev, UINT8 *base_mem, UINT8 allocation_type)
 {
     if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM) {
-        FreeMem(pdev, base_mem);
+        FreeMem(pdev, MSPACE_TYPE_DEVRAM, base_mem);
+    }  else if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_VRAM) { // this wasn't there in the original code
+         FreeMem(pdev, MSPACE_TYPE_VRAM, base_mem);
     }
 }
 
@@ -622,17 +645,18 @@ static void FreeDelSurface(PDev *pdev, Resource *res)
     internal = (InternalDelSurface *)res->res;
     switch (internal->allocation_type) {
     case DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM:
-        FreeMem(pdev, pdev->surfaces_info[internal->surface_id].draw_area.base_mem);
+        FreeMem(pdev, MSPACE_TYPE_DEVRAM,
+                pdev->surfaces_info[internal->surface_id].draw_area.base_mem);
         break;
     case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM:
-        VidMemFree(pdev->pvmList->lpHeap,
-                   (FLATPTR)pdev->surfaces_info[internal->surface_id].draw_area.base_mem);
+        FreeMem(pdev, MSPACE_TYPE_VRAM,
+                pdev->surfaces_info[internal->surface_id].draw_area.base_mem);
         break;
     default:
         PANIC(pdev, "bad allocation type");
     }
     FreeSurface(pdev, internal->surface_id);
-    FreeMem(pdev, res);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
@@ -648,7 +672,7 @@ void QXLGetDelSurface(PDev *pdev, QXLSurfaceCmd *surface, UINT32 surface_id, UIN
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
     alloc_size = SURFACEDEL_ALLOC_BASE;
-    surface_res = AllocMem(pdev, alloc_size);
+    surface_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
     
     surface_res->refs = 1;
     surface_res->free = FreeDelSurface;
@@ -671,17 +695,17 @@ static void FreePath(PDev *pdev, Resource *res)
     while (chunk_phys) {
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
-        FreeMem(pdev, chunk);
+        FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
         ONDBG(pdev->Res.num_path_pages--);
     }
-    FreeMem(pdev, res);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
     ONDBG(pdev->Res.num_path_pages--);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
 
 #define NEW_DATA_CHUNK(page_counter, size) {                                    \
-    void *ptr = AllocMem(pdev, size + sizeof(QXLDataChunk));                    \
+    void *ptr = AllocMem(pdev, MSPACE_TYPE_DEVRAM, size + sizeof(QXLDataChunk));                    \
     ONDBG((*(page_counter))++);                                                 \
     chunk->next_chunk = PA(pdev, ptr, pdev->main_mem_slot);                     \
     ((QXLDataChunk *)ptr)->prev_chunk = PA(pdev, chunk, pdev->main_mem_slot);   \
@@ -778,7 +802,7 @@ static Resource *__GetPath(PDev *pdev, PATHOBJ *path)
            QXL_PATH_CLOSE == PD_CLOSEFIGURE && QXL_PATH_BEZIER == PD_BEZIERS);
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
-    res = AllocMem(pdev, PATH_ALLOC_SIZE);
+    res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, PATH_ALLOC_SIZE);
     ONDBG(pdev->Res.num_path_pages++);
     res->refs = 1;
     res->free = FreePath;
@@ -824,10 +848,10 @@ static void FreeClipRects(PDev *pdev, Resource *res)
     while (chunk_phys) {
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
-        FreeMem(pdev, chunk);
+        FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
         ONDBG(pdev->Res.num_rects_pages--);
     }
-    FreeMem(pdev, res);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
     ONDBG(pdev->Res.num_rects_pages--);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
@@ -850,7 +874,7 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
     int more;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
-    res = (Resource *)AllocMem(pdev, RECTS_ALLOC_SIZE);
+    res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, RECTS_ALLOC_SIZE);
     ONDBG(pdev->Res.num_rects_pages++);
     res->refs = 1;
     res->free = FreeClipRects;
@@ -878,7 +902,7 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
         rects->num_rects += buf.count;
         for (now = buf.rects, end = now + buf.count; now < end; now++, dest++) {
             if (dest == dest_end) {
-                void *page = AllocMem(pdev, RECTS_CHUNK_ALLOC_SIZE);
+                void *page = AllocMem(pdev, MSPACE_TYPE_DEVRAM, RECTS_CHUNK_ALLOC_SIZE);
                 ONDBG(pdev->Res.num_rects_pages++);
                 chunk->next_chunk = PA(pdev, page, pdev->main_mem_slot);
                 ((QXLDataChunk *)page)->prev_chunk = PA(pdev, chunk, pdev->main_mem_slot);
@@ -910,7 +934,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
 
     if (clip->iDComplexity == DC_RECT) {
         QXLClipRects *rects;
-        rects_res = (Resource *)AllocMem(pdev, sizeof(Resource) + sizeof(QXLClipRects) +
+        rects_res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(Resource) + sizeof(QXLClipRects) +
                                          sizeof(QXLRect));
         rects_res->refs = 1;
         rects_res->free = FreeClipRects;
@@ -1338,7 +1362,7 @@ static _inline void ReleasePalette(PDev *pdev, InternalPalette *palette)
     ASSERT(pdev, palette);
     DEBUG_PRINT((pdev, 15, "%s\n", __FUNCTION__));
     if (--palette->refs == 0) {
-        FreeMem(pdev, palette);
+        FreeMem(pdev, MSPACE_TYPE_DEVRAM, palette);
     }
 }
 
@@ -1433,7 +1457,7 @@ static _inline void GetPallette(PDev *pdev, QXLBitmap *bitmap, XLATEOBJ *color_t
         return;
     }
 
-    internal = (InternalPalette *)AllocMem(pdev, sizeof(InternalPalette) +
+    internal = (InternalPalette *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(InternalPalette) +
                                            (color_trans->cEntries << 2));
     internal->refs = 1;
     RingItemInit(&internal->lru_link);
@@ -1463,11 +1487,11 @@ static void FreeQuicImage(PDev *pdev, Resource *res) // todo: defer
     while (chunk_phys) {
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
-        FreeMem(pdev, chunk);
+        FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
         ONDBG(pdev->Res.num_bits_pages--);
 
     }
-    FreeMem(pdev, res);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
     ONDBG(pdev->Res.num_bits_pages--);
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
@@ -1515,7 +1539,7 @@ static int quic_usr_more_space(QuicUsrContext *usr, uint32_t **io_ptr, int rows_
     more =  (rows_completed - usr_data->rows) * usr_data->raw_row_size;
 
     alloc_size = MIN(MAX(more >> 4, QUIC_BUF_MIN), QUIC_BUF_MAX);
-    new_chank = AllocMem(pdev, sizeof(QXLDataChunk) + alloc_size);
+    new_chank = AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(QXLDataChunk) + alloc_size);
     new_chank->data_size = 0;
     new_chank->prev_chunk = PA(pdev, usr_data->chunk, pdev->main_mem_slot);
     new_chank->next_chunk = 0;
@@ -1566,7 +1590,7 @@ static _inline Resource *GetQuicImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color
     alloc_size = MIN(QUIC_ALLOC_BASE + (height * line_size >> 4), QUIC_ALLOC_BASE + QUIC_BUF_MAX);
     alloc_size = MAX(alloc_size, QUIC_ALLOC_BASE + QUIC_BUF_MIN);
 
-    image_res = AllocMem(pdev, alloc_size);
+    image_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
     ONDBG(pdev->Res.num_bits_pages++);
     image_res->refs = 1;
     image_res->free = FreeQuicImage;
@@ -1625,12 +1649,12 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
     while (chunk_phys) {
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
-        FreeMem(pdev, chunk);
+        FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
         ONDBG(pdev->Res.num_bits_pages--);
 
     }
 
-    FreeMem(pdev, res);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
     ONDBG(pdev->Res.num_bits_pages--);
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
@@ -1669,7 +1693,7 @@ static void FreeSurfaceImage(PDev *pdev, Resource *res)
 {
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
-    FreeMem(pdev, res);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
@@ -1695,7 +1719,7 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     ASSERT(pdev, BITS_BUF_MAX > line_size);
     alloc_size = BITMAP_ALLOC_BASE + BITS_BUF_MAX - BITS_BUF_MAX % line_size;
     alloc_size = MIN(BITMAP_ALLOC_BASE + height * line_size, alloc_size);
-    image_res = AllocMem(pdev, alloc_size);
+    image_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
     ONDBG(pdev->Res.num_bits_pages++);
 
     image_res->refs = 1;
@@ -2004,7 +2028,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
         DEBUG_PRINT((pdev, 9, "%s: copy from device\n", __FUNCTION__));
 
         alloc_size = sizeof(Resource) + sizeof(InternalImage);
-        image_res = AllocMem(pdev, alloc_size);
+        image_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
 
         ONDBG(pdev->num_bits_pages++);
         image_res->refs = 1;
@@ -2170,7 +2194,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
         DEBUG_PRINT((pdev, 9, "%s: copy from device\n", __FUNCTION__));
 
         alloc_size = sizeof(Resource) + sizeof(InternalImage);
-        image_res = AllocMem(pdev, alloc_size);
+        image_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
 
         ONDBG(pdev->num_bits_pages++);
         image_res->refs = 1;
@@ -2319,7 +2343,7 @@ BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, QXLQMask *qxl_mask, SURFOBJ *
 static void FreeBuf(PDev *pdev, Resource *res)
 {
     ONDBG(pdev->Res.num_buf_pages--);
-    FreeMem(pdev, res);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
 }
 
 UINT8 *QXLGetBuf(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *buf_phys, UINT32 size)
@@ -2332,7 +2356,7 @@ UINT8 *QXLGetBuf(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *buf_phys, UINT3
         return NULL;
     }
 
-    buf_res = (Resource *)AllocMem(pdev, sizeof(Resource) + size);
+    buf_res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(Resource) + size);
     ONDBG(pdev->Res.num_buf_pages++);
     buf_res->refs = 1;
     buf_res->free = FreeBuf;
@@ -2496,11 +2520,11 @@ static void FreeSring(PDev *pdev, Resource *res)
     while (chunk_phys) {
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
-        FreeMem(pdev, chunk);
+        FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
         ONDBG(pdev->Res.num_glyphs_pages--);
     }
 
-    FreeMem(pdev, res);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
     ONDBG(pdev->Res.num_glyphs_pages--);
 
     DEBUG_PRINT((pdev, 14, "%s: done\n", __FUNCTION__));
@@ -2524,7 +2548,7 @@ BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *str_phys, FONTOBJ
 
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
 
-    str_res = (Resource *)AllocMem(pdev, TEXT_ALLOC_SIZE);
+    str_res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, TEXT_ALLOC_SIZE);
     ONDBG(pdev->Res.num_glyphs_pages++);
     str_res->refs = 1;
     str_res->free = FreeSring;
@@ -2604,7 +2628,7 @@ QXLCursorCmd *CursorCmd(PDev *pdev)
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
 
-    output = (QXLOutput *)AllocMem(pdev, sizeof(QXLOutput) + sizeof(QXLCursorCmd));
+    output = (QXLOutput *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(QXLOutput) + sizeof(QXLCursorCmd));
     output->num_res = 0;
     cursor_cmd = (QXLCursorCmd *)output->data;
     cursor_cmd->release_info.id = (UINT64)output;
@@ -2722,11 +2746,11 @@ static void FreeCursor(PDev *pdev, Resource *res)
     while (chunk_phys) {
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
-        FreeMem(pdev, chunk);
+        FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
         ONDBG(pdev->Res.num_cursor_pages--);
     }
 
-    FreeMem(pdev, res);
+    FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
     ONDBG(pdev->Res.num_cursor_pages--);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
@@ -2806,7 +2830,7 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     }
 
     ASSERT(pdev, sizeof(Resource) + sizeof(InternalCursor) < CURSOR_ALLOC_SIZE);
-    res = (Resource *)AllocMem(pdev, CURSOR_ALLOC_SIZE);
+    res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, CURSOR_ALLOC_SIZE);
     ONDBG(pdev->Res.num_cursor_pages++);
     res->refs = 1;
     res->free = FreeCursor;
@@ -3041,7 +3065,7 @@ BOOL GetTransparentCursor(PDev *pdev, QXLCursorCmd *cmd)
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
     ASSERT(pdev, sizeof(Resource) + sizeof(InternalCursor) < PAGE_SIZE);
 
-    res = (Resource *)AllocMem(pdev, sizeof(Resource) + sizeof(InternalCursor));
+    res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(Resource) + sizeof(InternalCursor));
     ONDBG(pdev->Res.num_cursor_pages++);
     res->refs = 1;
     res->free = FreeCursor;

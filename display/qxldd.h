@@ -148,10 +148,22 @@ typedef struct DevResDynamic {
     Ring palette_lru;
 } DevResDynamic;
 
-typedef struct DevRes {
+typedef struct MspaceInfo {
     mspace _mspace;
     UINT8 *mspace_start;
     UINT8 *mspace_end;
+} MspaceInfo;
+
+enum {
+    MSPACE_TYPE_DEVRAM,
+    MSPACE_TYPE_VRAM,
+
+    NUM_MSPACES,
+};
+
+typedef struct DevRes {   
+    MspaceInfo mspaces[NUM_MSPACES];
+
     BOOL need_init;
     UINT64 free_outputs;
     UINT32 update_id;
@@ -218,9 +230,8 @@ typedef struct PDev {
     ULONG fb_size;
     BYTE* fb;
     UINT64 fb_phys;
-    UINT8 dd_initialized;
-    UINT8 dd_slot_initialized;
-    UINT8 dd_mem_slot;
+    UINT8 vram_slot_initialized;
+    UINT8 vram_mem_slot;
 
     ULONG stride;
     FLONG red_mask;
