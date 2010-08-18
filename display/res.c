@@ -600,15 +600,17 @@ _inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT
         *stride = x * depth / 8;
         break;
     case DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM:
-        *base_mem = AllocMem(pdev, MSPACE_TYPE_DEVRAM, x * y * depth / 8);
-        *phys_mem = PA(pdev, *base_mem, pdev->main_mem_slot);
         *stride = x * depth / 8;
+        *stride = ALIGN(*stride, 4);
+        *base_mem = AllocMem(pdev, MSPACE_TYPE_DEVRAM, (*stride) * y);
+        *phys_mem = PA(pdev, *base_mem, pdev->main_mem_slot);
         break;
     case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM: { 
-        *base_mem = __AllocMem(pdev, MSPACE_TYPE_VRAM, x * y * depth / 8, FALSE,
+        *stride = x * depth / 8;
+        *stride = ALIGN(*stride, 4);
+        *base_mem = __AllocMem(pdev, MSPACE_TYPE_VRAM, (*stride) * y, FALSE,
                                SURFACE_ALLOC_RELEASE_BUNCH_SIZE);
         *phys_mem = PA(pdev, (PVOID)((UINT64)*base_mem), pdev->vram_mem_slot);
-        *stride = x * depth / 8;
         break;
     }
     default:
