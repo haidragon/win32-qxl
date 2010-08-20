@@ -1283,14 +1283,12 @@ out_error:
 VOID APIENTRY DrvDeleteDeviceBitmap(DHSURF dhsurf)
 {
     UINT32 surface_id;
-    PDev *pdev;
     SurfaceInfo *surface;
 
     surface = (SurfaceInfo *)dhsurf;
-    pdev = surface->pdev;
-    surface_id = surface - pdev->surfaces_info;
+    surface_id = GetSurfaceIdFromInfo(surface);
 
-    DeleteDeviceBitmap(pdev, surface_id, DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
+    DeleteDeviceBitmap(surface->pdev, surface_id, DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
 }
 
 #ifdef CALL_TEST

@@ -45,7 +45,7 @@ BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, ULONG format, UINT32 cx, UINT32
     size.cx = cx;
     size.cy = cy;
 
-    drawarea = &pdev->surfaces_info[surface_id].draw_area;
+    drawarea = &GetSurfaceInfo(pdev, surface_id)->draw_area;
 
     if (!(drawarea->bitmap = (HSURF)EngCreateBitmap(size, stride, format, 0, base_mem))) {
         DEBUG_PRINT((pdev, 0, "%s: EngCreateBitmap failed\n", __FUNCTION__));
@@ -101,7 +101,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
             return 0;
     };
 
-    if (!(surf = EngCreateDeviceBitmap((DHSURF)&pdev->surfaces_info[surface_id], size, format))) {
+    if (!(surf = EngCreateDeviceBitmap((DHSURF)GetSurfaceInfo(pdev, surface_id), size, format))) {
         DEBUG_PRINT((NULL, 0, "%s: create device surface failed, 0x%lx\n",
                      __FUNCTION__, pdev));
         goto out_error1;
@@ -119,7 +119,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
         goto out_error2;
     }
 
-    pdev->surfaces_info[surface_id].pdev = pdev;
+    GetSurfaceInfo(pdev, surface_id)->pdev = pdev;
 
     QXLGetSurface(pdev, phys_mem, size.cx, size.cy, depth,
                   &stride, base_mem, allocation_type);
@@ -158,7 +158,7 @@ VOID DeleteDeviceBitmap(PDev *pdev, UINT32 surface_id, UINT8 allocation_type)
 {
     DrawArea *drawarea;
 
-    drawarea = &pdev->surfaces_info[surface_id].draw_area;
+    drawarea = &GetSurfaceInfo(pdev,surface_id)->draw_area;
 
     FreeDrawArea(drawarea);
 

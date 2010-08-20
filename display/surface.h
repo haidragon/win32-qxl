@@ -3,17 +3,25 @@
 
 #include "qxldd.h"
 
+static _inline UINT32 GetSurfaceIdFromInfo(SurfaceInfo *info)
+{
+  PDev *pdev;
+
+  pdev = info->pdev;
+  return info - pdev->surfaces_info;
+}
+
+static _inline SurfaceInfo *GetSurfaceInfo(PDev *pdev, UINT32 id)
+{
+  return &pdev->surfaces_info[id];
+}
+
 static _inline UINT32 GetSurfaceId(SURFOBJ *surf)
 {
-    PDev *pdev;
     SurfaceInfo *surface;
-    UINT32 surface_id;
-
-    pdev = (PDev *)surf->dhpdev;
 
     surface = (SurfaceInfo *)surf->dhsurf;
-    surface_id = surface - pdev->surfaces_info;
-    return surface_id;
+    return GetSurfaceIdFromInfo(surface);
 }
 
 static _inline void FreeSurface(PDev *pdev, UINT32 surface_id)

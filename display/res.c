@@ -648,11 +648,11 @@ static void FreeDelSurface(PDev *pdev, Resource *res)
     switch (internal->allocation_type) {
     case DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM:
         FreeMem(pdev, MSPACE_TYPE_DEVRAM,
-                pdev->surfaces_info[internal->surface_id].draw_area.base_mem);
+                GetSurfaceInfo(pdev, internal->surface_id)->draw_area.base_mem);
         break;
     case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM:
         FreeMem(pdev, MSPACE_TYPE_VRAM,
-                pdev->surfaces_info[internal->surface_id].draw_area.base_mem);
+                GetSurfaceInfo(pdev, internal->surface_id)->draw_area.base_mem);
         break;
     default:
         PANIC(pdev, "bad allocation type");
