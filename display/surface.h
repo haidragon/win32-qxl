@@ -8,12 +8,18 @@ static _inline UINT32 GetSurfaceIdFromInfo(SurfaceInfo *info)
   PDev *pdev;
 
   pdev = info->pdev;
-  return info - pdev->surfaces_info;
+  if (info == &pdev->surface0_info) {
+    return 0;
+  }
+  return info - pdev->Res.surfaces_info;
 }
 
 static _inline SurfaceInfo *GetSurfaceInfo(PDev *pdev, UINT32 id)
 {
-  return &pdev->surfaces_info[id];
+  if (id == 0) {
+    return &pdev->surface0_info;
+  }
+  return &pdev->Res.surfaces_info[id];
 }
 
 static _inline UINT32 GetSurfaceId(SURFOBJ *surf)

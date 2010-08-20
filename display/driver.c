@@ -553,7 +553,6 @@ VOID DrvDisablePDEV(DHPDEV in_pdev)
     PDev* pdev = (PDev*)in_pdev;
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
-    EngFreeMem(pdev->surfaces_info);
     ResDestroy(pdev);
     DestroyPalette(pdev);
     EngDeleteSemaphore(pdev->cmd_sem);
@@ -744,12 +743,6 @@ BOOL PrepareHardware(PDev *pdev)
     pdev->log_level = dev_info.log_level;
 
     pdev->n_surfaces = dev_info.n_surfaces;
-    if (!(pdev->surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
-                                                           sizeof(SurfaceInfo) *
-                                                           pdev->n_surfaces, ALLOC_TAG))) {
-        DEBUG_PRINT((NULL, 0, "%s: surfaces_info alloc failed\n", __FUNCTION__));
-        return FALSE;
-    }
 
     pdev->mem_slots = EngAllocMem(FL_ZERO_MEMORY, sizeof(PMemSlot) * dev_info.num_mem_slot,
                                   ALLOC_TAG);
@@ -930,11 +923,6 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
         DeleteDeviceBitmap(pdev, 0, DEVICE_BITMAP_ALLOCATION_TYPE_SURF0);
         EngDeleteSurface(pdev->surf);
         pdev->surf = NULL;
-    }
-
-    if (pdev->surfaces_info) {
-        EngFreeMem(pdev->surfaces_info);
-        pdev->surfaces_info = NULL;
     }
 
     if (pdev->mem_slots) {

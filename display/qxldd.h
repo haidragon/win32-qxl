@@ -191,6 +191,7 @@ typedef struct DevRes {
     struct InternalPalette *palette_cache[PALETTE_HASH_SIZE];
     UINT32 num_palettes;
 
+    SurfaceInfo *surfaces_info;
     UINT8 *surfaces_used;
 
     HANDLE driver;
@@ -313,7 +314,7 @@ typedef struct PDev {
     UINT8 FPUSave[16 * 4 + 15];
 
     UINT32 n_surfaces;
-    SurfaceInfo *surfaces_info;
+    SurfaceInfo surface0_info;
 
     VIDEOMEMORY *pvmList;
 } PDev;

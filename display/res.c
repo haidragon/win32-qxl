@@ -358,6 +358,10 @@ void CleanGlobalRes()
                 EngFreeMem(global_res[i].surfaces_used);
                 global_res[i].surfaces_used = NULL;
             }
+            if (global_res[i].surfaces_info) {
+                EngFreeMem(global_res[i].surfaces_info);
+                global_res[i].surfaces_info = NULL;
+            }
         }
         EngFreeMem(global_res);
         global_res = NULL;
@@ -398,6 +402,13 @@ static void InitRes(PDev *pdev)
                                           ALLOC_TAG);
     if (!pdev->Res.surfaces_used) {
         PANIC(pdev, "Res surfaces_used allocation failed\n");
+    }
+
+    pdev->Res.surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
+							 sizeof(SurfaceInfo) * pdev->n_surfaces, 
+							 ALLOC_TAG);
+    if (!pdev->Res.surfaces_info) {
+        PANIC(pdev, "Res surfaces_info allocation failed\n");
     }
 
     pdev->Res.free_outputs = 0;
