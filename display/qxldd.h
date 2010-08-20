@@ -161,6 +161,19 @@ enum {
     NUM_MSPACES,
 };
 
+typedef struct PDev PDev;
+
+typedef struct DrawArea {
+   HSURF bitmap;
+   SURFOBJ* surf_obj;
+   UINT8 *base_mem;
+} DrawArea;
+
+typedef struct SurfaceInfo {
+    DrawArea draw_area;
+    PDev *pdev;
+} SurfaceInfo;
+
 typedef struct DevRes {   
     MspaceInfo mspaces[NUM_MSPACES];
 
@@ -201,20 +214,6 @@ typedef struct DevRes {
 
 #define SSE_MASK 15
 #define SSE_ALIGN 16
-
- 
-typedef struct DrawArea {
-   HSURF bitmap;
-   SURFOBJ* surf_obj;
-   UINT8 *base_mem;
-} DrawArea;
-
-typedef struct PDev PDev;
-
-typedef struct SurfaceInfo {
-    DrawArea draw_area;
-    PDev *pdev;
-} SurfaceInfo;
 
 typedef struct PDev {
     HANDLE driver;
