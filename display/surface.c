@@ -119,7 +119,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
         goto out_error2;
     }
 
-    GetSurfaceInfo(pdev, surface_id)->pdev = pdev;
+    GetSurfaceInfo(pdev, surface_id)->u.pdev = pdev;
 
     QXLGetSurface(pdev, phys_mem, size.cx, size.cy, depth,
                   &stride, base_mem, allocation_type);

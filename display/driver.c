@@ -1268,7 +1268,7 @@ VOID APIENTRY DrvDeleteDeviceBitmap(DHSURF dhsurf)
     surface = (SurfaceInfo *)dhsurf;
     surface_id = GetSurfaceIdFromInfo(surface);
 
-    DeleteDeviceBitmap(surface->pdev, surface_id, DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
+    DeleteDeviceBitmap(surface->u.pdev, surface_id, DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
 }
 
 #ifdef CALL_TEST

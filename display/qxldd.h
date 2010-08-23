@@ -169,10 +169,14 @@ typedef struct DrawArea {
    UINT8 *base_mem;
 } DrawArea;
 
-typedef struct SurfaceInfo {
+typedef struct SurfaceInfo SurfaceInfo;
+struct SurfaceInfo {
     DrawArea draw_area;
-    PDev *pdev;
-} SurfaceInfo;
+    union {
+        PDev *pdev;
+        SurfaceInfo *next_free;
+    } u;
+};
 
 typedef struct DevRes {   
     MspaceInfo mspaces[NUM_MSPACES];

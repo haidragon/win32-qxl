@@ -7,7 +7,7 @@ static _inline UINT32 GetSurfaceIdFromInfo(SurfaceInfo *info)
 {
   PDev *pdev;
 
-  pdev = info->pdev;
+  pdev = info->u.pdev;
   if (info == &pdev->surface0_info) {
     return 0;
   }
