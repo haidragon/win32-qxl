@@ -1248,14 +1248,16 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
     hbitmap = CreateDeviceBitmap(pdev, size, pdev->bitmap_format, &phys_mem, &base_mem, surface_id,
                                  DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
     if (!hbitmap) {
-        goto out_error;
+        goto out_error2;
     }
 
     return hbitmap;
 
     // to optimize the failure case
+out_error2:
+    FreeSurface(pdev, surface_id);
 out_error:
-	return 0; 
+    return 0;
 }
 
 VOID APIENTRY DrvDeleteDeviceBitmap(DHSURF dhsurf)
