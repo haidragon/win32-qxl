@@ -197,6 +197,7 @@ typedef struct DevRes {
     UINT32 num_palettes;
 
     SurfaceInfo *surfaces_info;
+    SurfaceInfo *free_surfaces;
     UINT8 *surfaces_used;
 
     HANDLE driver;

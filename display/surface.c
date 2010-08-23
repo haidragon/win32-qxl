@@ -163,7 +163,7 @@ VOID DeleteDeviceBitmap(PDev *pdev, UINT32 surface_id, UINT8 allocation_type)
     FreeDrawArea(drawarea);
 
     if (allocation_type != DEVICE_BITMAP_ALLOCATION_TYPE_SURF0 &&
-        pdev->Res.surfaces_used[surface_id]) {
+        pdev->Res.surfaces_info[surface_id].draw_area.base_mem != NULL) {
         QXLSurfaceCmd *surface;
 
         surface = SurfaceCmd(pdev, QXL_SURFACE_CMD_DESTROY, surface_id);

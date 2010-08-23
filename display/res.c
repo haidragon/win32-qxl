@@ -437,6 +437,10 @@ static void InitRes(PDev *pdev)
     if (!pdev->Res.surfaces_info) {
         PANIC(pdev, "Res surfaces_info allocation failed\n");
     }
+    pdev->Res.free_surfaces = &pdev->Res.surfaces_info[0];
+    for (i = 0; i < pdev->n_surfaces - 1; i++) {
+        pdev->Res.surfaces_info[i].u.next_free = &pdev->Res.surfaces_info[i+1];
+    }
 
     pdev->Res.free_outputs = 0;
     pdev->Res.malloc_sem = EngCreateSemaphore();

@@ -32,23 +32,31 @@ static _inline UINT32 GetSurfaceId(SURFOBJ *surf)
 
 static _inline void FreeSurface(PDev *pdev, UINT32 surface_id)
 {
-   pdev->Res.surfaces_used[surface_id] = 0;
+    SurfaceInfo *surface;
+
+    if (surface_id == 0) {
+        return;
+    }
+    surface = &pdev->Res.surfaces_info[surface_id];
+    surface->draw_area.base_mem = NULL; /* Mark as not used */
+    surface->u.next_free = pdev->Res.free_surfaces;
+    pdev->Res.free_surfaces = surface;
 }
 
 
 static UINT32 GetFreeSurface(PDev *pdev)
 {
     UINT32 x;
+    SurfaceInfo *surface;
 
-    //not effective, fix me
-    for (x = 1; x < pdev->n_surfaces; ++x) {
-        if (!pdev->Res.surfaces_used[x]) {
-            pdev->Res.surfaces_used[x] = 1;
-            return x;
-        }
+    surface = pdev->Res.free_surfaces;
+    if (surface == NULL) {
+        return 0;
     }
 
-    return 0;
+    pdev->Res.free_surfaces = surface->u.next_free;
+
+    return surface - pdev->Res.surfaces_info;
 }
 
 enum {
