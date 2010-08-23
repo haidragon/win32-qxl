@@ -36,8 +36,6 @@
 #define WAIT_FOR_EVENT(pdev, event, timeout) EngWaitForSingleObject(event, timeout)
 #endif
 
-#define SURFACE_ALLOC_RELEASE_BUNCH_SIZE 3
-
 static _inline QXLPHYSICAL PA(PDev *pdev, PVOID virt, UINT8 slot_id)
 {
     PMemSlot *p_slot = &pdev->mem_slots[slot_id];
@@ -285,10 +283,36 @@ static void WaitForReleaseRing(PDev* pdev)
     DEBUG_PRINT((pdev, 16, "%s: 0x%lx, done\n", __FUNCTION__, pdev));
 }
 
+static void FlushReleaseRing(PDev *pdev)
+{
+    UINT64 output;
+    int notify;
+    int num_to_release = 50;
+
+    output = pdev->Res.free_outputs;
+
+    while (1) {
+        while (output != 0) {
+            output = ReleaseOutput(pdev, output);
+            if (--num_to_release == 0) {
+                break;
+            }
+        }
+
+        if (SPICE_RING_IS_EMPTY(pdev->release_ring)) {
+            break;
+        }
+
+        output = *SPICE_RING_CONS_ITEM(pdev->release_ring);
+        SPICE_RING_POP(pdev->release_ring, notify);
+    }
+
+    pdev->Res.free_outputs = output;
+}
+
 // todo: separate VRAM releases from DEVRAM releases
-#define AllocMem(pdev, mspace_type, size) __AllocMem(pdev, mspace_type, size, TRUE, 1)
-static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size,
-                        BOOL force, INT32 release_bunch)
+#define AllocMem(pdev, mspace_type, size) __AllocMem(pdev, mspace_type, size, TRUE)
+static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size, BOOL force)
 {
     UINT8 *ptr;
 
@@ -296,35 +320,32 @@ static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size,
     DEBUG_PRINT((pdev, 12, "%s: 0x%lx size %u\n", __FUNCTION__, pdev, size));
 
     EngAcquireSemaphore(pdev->Res.malloc_sem);
-    while (!(ptr = mspace_malloc(pdev->Res.mspaces[mspace_type]._mspace, size))) {
-        int notify;
-        int num_to_release = release_bunch;
 
-        while (pdev->Res.free_outputs && num_to_release) {
-            pdev->Res.free_outputs = ReleaseOutput(pdev, pdev->Res.free_outputs);
-            num_to_release--;
+    while (1) {
+        /* Release lots of queued resources, before allocating, as we
+           want to release early to minimize fragmentation risks. */
+        FlushReleaseRing(pdev);
+
+        ptr = mspace_malloc(pdev->Res.mspaces[mspace_type]._mspace, size);
+        if (ptr) {
+            break;
         }
 
-        if (!num_to_release) {
+        if (pdev->Res.free_outputs != 0 ||
+            !SPICE_RING_IS_EMPTY(pdev->release_ring)) {
+            /* We have more things to free, try that */
             continue;
         }
 
         if (force) {
+            /* Ask spice to free some stuff */
             WaitForReleaseRing(pdev);
         } else {
-            if (SPICE_RING_IS_EMPTY(pdev->release_ring)) {
-                break;
-            }
-        }
-
-        pdev->Res.free_outputs = *SPICE_RING_CONS_ITEM(pdev->release_ring);
-        SPICE_RING_POP(pdev->release_ring, notify);
-
-        while (pdev->Res.free_outputs && num_to_release) {
-            pdev->Res.free_outputs = ReleaseOutput(pdev, pdev->Res.free_outputs);
-            num_to_release--;
+            /* Fail */
+            break;
         }
     }
+
     EngReleaseSemaphore(pdev->Res.malloc_sem);
     ASSERT(pdev, (!ptr && !force) || (ptr >= pdev->Res.mspaces[mspace_type].mspace_start &&
                                       ptr < pdev->Res.mspaces[mspace_type].mspace_end));
@@ -630,8 +651,7 @@ _inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT
     case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM: { 
         *stride = x * depth / 8;
         *stride = ALIGN(*stride, 4);
-        *base_mem = __AllocMem(pdev, MSPACE_TYPE_VRAM, (*stride) * y, FALSE,
-                               SURFACE_ALLOC_RELEASE_BUNCH_SIZE);
+        *base_mem = __AllocMem(pdev, MSPACE_TYPE_VRAM, (*stride) * y, FALSE);
         *phys_mem = PA(pdev, (PVOID)((UINT64)*base_mem), pdev->vram_mem_slot);
         break;
     }
@@ -1339,14 +1359,11 @@ static CacheImage *AllocCacheImage(PDev* pdev)
 {
     RingItem *item;
     while (!(item = RingGetTail(pdev, &pdev->Res.dynamic->cache_image_lru))) {
-        int notify;
-        if (pdev->Res.free_outputs) {
-            pdev->Res.free_outputs = ReleaseOutput(pdev, pdev->Res.free_outputs);
-            continue;
+        if (pdev->Res.free_outputs == 0 &&
+            SPICE_RING_IS_EMPTY(pdev->release_ring)) {
+            WaitForReleaseRing(pdev);
         }
-        WaitForReleaseRing(pdev);
-        pdev->Res.free_outputs = *SPICE_RING_CONS_ITEM(pdev->release_ring);
-        SPICE_RING_POP(pdev->release_ring, notify);
+        FlushReleaseRing(pdev);
     }
     RingRemove(pdev, item);
     return CONTAINEROF(item, CacheImage, lru_link);
