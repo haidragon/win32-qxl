@@ -198,7 +198,6 @@ typedef struct DevRes {
 
     SurfaceInfo *surfaces_info;
     SurfaceInfo *free_surfaces;
-    UINT8 *surfaces_used;
 
     HANDLE driver;
 #ifdef DBG

@@ -377,10 +377,6 @@ void CleanGlobalRes()
                 EngFreeMem(global_res[i].dynamic);
                 global_res[i].dynamic = NULL;
             }
-            if (global_res[i].surfaces_used) {
-                EngFreeMem(global_res[i].surfaces_used);
-                global_res[i].surfaces_used = NULL;
-            }
             if (global_res[i].surfaces_info) {
                 EngFreeMem(global_res[i].surfaces_info);
                 global_res[i].surfaces_info = NULL;
@@ -425,13 +421,7 @@ static void InitRes(PDev *pdev)
         PANIC(pdev, "Res dynamic allocation failed\n");
     }
 
-    pdev->Res.surfaces_used = EngAllocMem(FL_ZERO_MEMORY, sizeof(UINT8) * pdev->n_surfaces,
-                                          ALLOC_TAG);
-    if (!pdev->Res.surfaces_used) {
-        PANIC(pdev, "Res surfaces_used allocation failed\n");
-    }
-
-    pdev->Res.surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
+   pdev->Res.surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
 							 sizeof(SurfaceInfo) * pdev->n_surfaces, 
 							 ALLOC_TAG);
     if (!pdev->Res.surfaces_info) {
