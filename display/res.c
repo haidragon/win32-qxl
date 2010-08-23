@@ -337,7 +337,9 @@ static void FreeMem(PDev* pdev, UINT32 mspace_type, void *ptr)
     ASSERT(pdev, pdev && pdev->Res.mspaces[mspace_type]._mspace);
     ASSERT(pdev, (UINT8 *)ptr >= pdev->Res.mspaces[mspace_type].mspace_start && 
                  (UINT8 *)ptr < pdev->Res.mspaces[mspace_type].mspace_end);
+    EngAcquireSemaphore(pdev->Res.malloc_sem);
     mspace_free(pdev->Res.mspaces[mspace_type]._mspace, ptr);
+    EngReleaseSemaphore(pdev->Res.malloc_sem);
 }
 
 DevRes *global_res = NULL;
