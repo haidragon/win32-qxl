@@ -176,6 +176,7 @@ typedef struct SurfaceInfo {
 
 typedef struct DevRes {   
     MspaceInfo mspaces[NUM_MSPACES];
+    HSEMAPHORE malloc_sem;
 
     BOOL need_init;
     UINT64 free_outputs;
@@ -258,7 +259,6 @@ typedef struct PDev {
     UINT8 *log_buf;
     UINT32 *log_level;
 
-    HSEMAPHORE malloc_sem;
     HSEMAPHORE print_sem;
     HSEMAPHORE cmd_sem;
 

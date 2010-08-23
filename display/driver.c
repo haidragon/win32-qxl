@@ -505,24 +505,19 @@ DHPDEV DrvEnablePDEV(DEVMODEW *dev_mode, PWSTR ignore1, ULONG ignore2, HSURF *ig
         goto err1;
     }
 
-    if (!(pdev->malloc_sem = EngCreateSemaphore())) {
-        DEBUG_PRINT((NULL, 0, "%s: create malloc sem failed\n", __FUNCTION__));
-        goto err2;
-    }
-
     if (!(pdev->print_sem = EngCreateSemaphore())) {
-        DEBUG_PRINT((NULL, 0, "%s: create malloc sem failed\n", __FUNCTION__));
-        goto err3;
+        DEBUG_PRINT((NULL, 0, "%s: create print sem failed\n", __FUNCTION__));
+        goto err2;
     }
 
     if (!(pdev->cmd_sem = EngCreateSemaphore())) {
         DEBUG_PRINT((NULL, 0, "%s: create cmd sem failed\n", __FUNCTION__));
-        goto err4;
+        goto err3;
     }
 
     if (!ResInit(pdev)) {
         DEBUG_PRINT((NULL, 0, "%s: init res failed\n", __FUNCTION__));
-        goto err5;
+        goto err4;
     }
 
     RtlCopyMemory(dev_caps, &gdi_info, dev_caps_size);
@@ -531,14 +526,10 @@ DHPDEV DrvEnablePDEV(DEVMODEW *dev_mode, PWSTR ignore1, ULONG ignore2, HSURF *ig
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     return(DHPDEV)pdev;
 
-err5:
-    EngDeleteSemaphore(pdev->cmd_sem);
 err4:
-    EngDeleteSemaphore(pdev->print_sem);
-
+    EngDeleteSemaphore(pdev->cmd_sem);
 err3:
-    EngDeleteSemaphore(pdev->malloc_sem);
-
+    EngDeleteSemaphore(pdev->print_sem);
 err2:
     DestroyPalette(pdev);
 
@@ -556,7 +547,6 @@ VOID DrvDisablePDEV(DHPDEV in_pdev)
     ResDestroy(pdev);
     DestroyPalette(pdev);
     EngDeleteSemaphore(pdev->cmd_sem);
-    EngDeleteSemaphore(pdev->malloc_sem);
     EngDeleteSemaphore(pdev->print_sem);
     EngFreeMem(pdev);
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));

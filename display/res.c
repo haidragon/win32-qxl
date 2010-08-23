@@ -295,7 +295,7 @@ static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size,
     ASSERT(pdev, pdev && pdev->Res.mspaces[mspace_type]._mspace);
     DEBUG_PRINT((pdev, 12, "%s: 0x%lx size %u\n", __FUNCTION__, pdev, size));
 
-    EngAcquireSemaphore(pdev->malloc_sem);
+    EngAcquireSemaphore(pdev->Res.malloc_sem);
     while (!(ptr = mspace_malloc(pdev->Res.mspaces[mspace_type]._mspace, size))) {
         int notify;
         int num_to_release = release_bunch;
@@ -325,7 +325,7 @@ static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size,
             num_to_release--;
         }
     }
-    EngReleaseSemaphore(pdev->malloc_sem);
+    EngReleaseSemaphore(pdev->Res.malloc_sem);
     ASSERT(pdev, (!ptr && !force) || (ptr >= pdev->Res.mspaces[mspace_type].mspace_start &&
                                       ptr < pdev->Res.mspaces[mspace_type].mspace_end));
     DEBUG_PRINT((pdev, 13, "%s: 0x%lx done 0x%x\n", __FUNCTION__, pdev, ptr));
@@ -361,6 +361,10 @@ void CleanGlobalRes()
             if (global_res[i].surfaces_info) {
                 EngFreeMem(global_res[i].surfaces_info);
                 global_res[i].surfaces_info = NULL;
+            }
+            if (global_res[i].malloc_sem) {
+                EngDeleteSemaphore(global_res[i].malloc_sem);
+                global_res[i].malloc_sem = NULL;
             }
         }
         EngFreeMem(global_res);
@@ -412,6 +416,11 @@ static void InitRes(PDev *pdev)
     }
 
     pdev->Res.free_outputs = 0;
+    pdev->Res.malloc_sem = EngCreateSemaphore();
+    if (!pdev->Res.malloc_sem) {
+        PANIC(pdev, "Res malloc sem creation failed\n");
+    }
+
     InitMspace(&pdev->Res, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
     InitMspace(&pdev->Res, MSPACE_TYPE_VRAM, pdev->fb, pdev->fb_size);
     pdev->Res.update_id = *pdev->dev_update_id;
