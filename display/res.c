@@ -238,6 +238,7 @@ static void QXLSleep(PDev* pdev, int msec)
     DEBUG_PRINT((pdev, 19, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
 }
 
+/* Called with malloc_sem held */
 static void WaitForReleaseRing(PDev* pdev)
 {
     int wait;
@@ -283,6 +284,7 @@ static void WaitForReleaseRing(PDev* pdev)
     DEBUG_PRINT((pdev, 16, "%s: 0x%lx, done\n", __FUNCTION__, pdev));
 }
 
+/* Called with malloc_sem held */
 static void FlushReleaseRing(PDev *pdev)
 {
     UINT64 output;
@@ -1354,11 +1356,14 @@ static CacheImage *AllocCacheImage(PDev* pdev)
 {
     RingItem *item;
     while (!(item = RingGetTail(pdev, &pdev->Res.dynamic->cache_image_lru))) {
+	/* malloc_sem protects release_ring too */
+        EngAcquireSemaphore(pdev->Res.malloc_sem);
         if (pdev->Res.free_outputs == 0 &&
             SPICE_RING_IS_EMPTY(pdev->release_ring)) {
             WaitForReleaseRing(pdev);
         }
         FlushReleaseRing(pdev);
+	EngReleaseSemaphore(pdev->Res.malloc_sem);
     }
     RingRemove(pdev, item);
     return CONTAINEROF(item, CacheImage, lru_link);

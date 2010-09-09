@@ -180,7 +180,7 @@ struct SurfaceInfo {
 
 typedef struct DevRes {   
     MspaceInfo mspaces[NUM_MSPACES];
-    HSEMAPHORE malloc_sem;
+    HSEMAPHORE malloc_sem; /* Also protects release ring */
 
     BOOL need_init;
     UINT64 free_outputs;
