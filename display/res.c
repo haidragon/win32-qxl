@@ -299,7 +299,8 @@ static void FlushReleaseRing(PDev *pdev)
             }
         }
 
-        if (SPICE_RING_IS_EMPTY(pdev->release_ring)) {
+        if (output != 0 ||
+            SPICE_RING_IS_EMPTY(pdev->release_ring)) {
             break;
         }
 
