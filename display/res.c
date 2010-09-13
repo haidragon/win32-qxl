@@ -1719,9 +1719,9 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
 
-static _inline void RestoreFPU(PDev *pdev)
+static _inline void RestoreFPU(PDev *pdev, UINT8 FPUSave[])
 {
-    void *align_addr =  (void *)ALIGN((size_t)(&pdev->FPUSave), SSE_ALIGN);
+    void *align_addr =  (void *)ALIGN((size_t)(FPUSave), SSE_ALIGN);
 
     _asm
     {
@@ -1734,9 +1734,9 @@ static _inline void RestoreFPU(PDev *pdev)
     }
 }
 
-static _inline void SaveFPU(PDev *pdev)
+static _inline void SaveFPU(PDev *pdev, UINT8 FPUSave[])
 {
-    void *align_addr =  (void *)ALIGN((size_t)(&pdev->FPUSave), SSE_ALIGN);
+    void *align_addr =  (void *)ALIGN((size_t)(FPUSave), SSE_ALIGN);
 
     _asm
     {
@@ -1771,7 +1771,6 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     UINT8 *src_end;
     UINT8 *dest;
     UINT8 *dest_end;
-    BOOL use_sse = FALSE;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     ASSERT(pdev, width > 0 && height > 0);
@@ -1805,17 +1804,21 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     alloc_size = height * line_size;
 
     if (have_sse2 && alloc_size >= 1024) {
-        use_sse = TRUE;
-        SaveFPU(pdev);
-    }
+        UINT8 FPUSave[16 * 4 + 15];
 
-    for (; src != src_end; src -= surf->lDelta, alloc_size -= line_size) {
-        PutBytesAlign(pdev, &chunk, &dest, &dest_end, src, line_size,
-                      &pdev->Res->num_bits_pages, alloc_size, line_size, TRUE);
-    }
+        SaveFPU(pdev, FPUSave);
 
-    if (use_sse) {
-        RestoreFPU(pdev);
+	for (; src != src_end; src -= surf->lDelta, alloc_size -= line_size) {
+	  PutBytesAlign(pdev, &chunk, &dest, &dest_end, src, line_size,
+			&pdev->Res->num_bits_pages, alloc_size, line_size, TRUE);
+	}
+
+        RestoreFPU(pdev, FPUSave);
+    } else {
+        for (; src != src_end; src -= surf->lDelta, alloc_size -= line_size) {
+            PutBytesAlign(pdev, &chunk, &dest, &dest_end, src, line_size,
+                          &pdev->Res->num_bits_pages, alloc_size, line_size, FALSE);
+        }
     }
 
     GetPallette(pdev, &internal->image.bitmap, color_trans);
