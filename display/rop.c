@@ -500,14 +500,16 @@ static BOOL DoOpaque(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, 
     return TRUE;
 }
 
-static BOOL StreamTest(PDev *pdev, SURFOBJ *src_surf, XLATEOBJ *color_trans, RECTL *src_rect,
-                       RECTL *dest)
+static BOOL StreamTest(PDev *pdev, UINT32 surface_id, SURFOBJ *src_surf, 
+		       XLATEOBJ *color_trans, RECTL *src_rect, RECTL *dest)
 {
     Ring *ring = &pdev->update_trace;
     UpdateTrace *trace = (UpdateTrace *)ring->next;
     LONG src_pixmap_pixels = src_surf->sizlBitmap.cx * src_surf->sizlBitmap.cy;
 
-    if (src_pixmap_pixels <= 128 * 128) {
+    if (src_pixmap_pixels <= 128 * 128 || 
+	/* Only handle streams on primary surface */
+	surface_id != 0) {
         return TRUE;
     }
 
@@ -673,7 +675,7 @@ static BOOL DoCopy(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SU
     if (mask) {
         use_cache = TRUE;
     } else {
-        use_cache = StreamTest(pdev, src, color_trans, src_rect, area);
+        use_cache = StreamTest(pdev, surface_id, src, color_trans, src_rect, area);
     }
 
     if (use_cache && TestSplitClips(pdev, src, src_rect, clip, mask) &&
