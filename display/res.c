@@ -588,13 +588,13 @@ void PushDrawable(PDev *pdev, QXLDrawable *drawable)
 {
     QXLCommand *cmd;
 
-    EngAcquireSemaphore(pdev->Res->cmd_sem);            \
+    EngAcquireSemaphore(pdev->Res->cmd_sem);
     WaitForCmdRing(pdev);
     cmd = SPICE_RING_PROD_ITEM(pdev->cmd_ring);
     cmd->type = QXL_CMD_DRAW;
     cmd->data = PA(pdev, drawable, pdev->main_mem_slot);
     PUSH_CMD(pdev);
-    EngReleaseSemaphore(pdev->Res->cmd_sem);            \
+    EngReleaseSemaphore(pdev->Res->cmd_sem);
 }
 
 static QXLSurfaceCmd *GetSurfaceCmd(PDev *pdev)
@@ -627,13 +627,13 @@ void PushSurfaceCmd(PDev *pdev, QXLSurfaceCmd *surface_cmd)
 {
     QXLCommand *cmd;
 
-    EngAcquireSemaphore(pdev->Res->cmd_sem);            \
+    EngAcquireSemaphore(pdev->Res->cmd_sem);
     WaitForCmdRing(pdev);
     cmd = SPICE_RING_PROD_ITEM(pdev->cmd_ring);
     cmd->type = QXL_CMD_SURFACE;
     cmd->data = PA(pdev, surface_cmd, pdev->main_mem_slot);
     PUSH_CMD(pdev);
-    EngReleaseSemaphore(pdev->Res->cmd_sem);            \
+    EngReleaseSemaphore(pdev->Res->cmd_sem);
 }
 
 
@@ -2437,13 +2437,13 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
     updat_cmd->update_id = ++pdev->Res->update_id;
     updat_cmd->surface_id = surface_id;
 
-    EngAcquireSemaphore(pdev->Res->cmd_sem);            \
+    EngAcquireSemaphore(pdev->Res->cmd_sem);
     WaitForCmdRing(pdev);
     cmd = SPICE_RING_PROD_ITEM(pdev->cmd_ring);
     cmd->type = QXL_CMD_UPDATE;
     cmd->data = PA(pdev, updat_cmd, pdev->main_mem_slot);
     PUSH_CMD(pdev);
-    EngReleaseSemaphore(pdev->Res->cmd_sem);            \
+    EngReleaseSemaphore(pdev->Res->cmd_sem);
     do {
 #ifdef DBG
         {
