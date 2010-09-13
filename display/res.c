@@ -383,10 +383,6 @@ void CleanGlobalRes()
         for (i = 0; i < num_global_res; ++i) {
             res = global_res[i];
             if (res != NULL) {
-                if (res->dynamic) {
-                    EngFreeMem(res->dynamic);
-                    res->dynamic = NULL;
-                }
                 if (res->surfaces_info) {
                     EngFreeMem(res->surfaces_info);
                     res->surfaces_info = NULL;
@@ -428,11 +424,6 @@ static void InitRes(PDev *pdev)
 {
     UINT32 i;
 
-    pdev->Res->dynamic = EngAllocMem(FL_ZERO_MEMORY, sizeof(DevResDynamic), ALLOC_TAG);
-    if (!pdev->Res->dynamic) {
-        PANIC(pdev, "Res dynamic allocation failed\n");
-    }
-
    pdev->Res->surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
 							 sizeof(SurfaceInfo) * pdev->n_surfaces, 
 							 ALLOC_TAG);
@@ -456,22 +447,22 @@ static void InitRes(PDev *pdev)
 
     RtlZeroMemory(pdev->Res->image_key_lookup,
                   sizeof(pdev->Res->image_key_lookup));
-    RtlZeroMemory(pdev->Res->dynamic->cache_image_pool,
-                  sizeof(pdev->Res->dynamic->cache_image_pool));
-    RingInit(&pdev->Res->dynamic->cache_image_lru);
+    RtlZeroMemory(pdev->Res->cache_image_pool,
+                  sizeof(pdev->Res->cache_image_pool));
+    RingInit(&pdev->Res->cache_image_lru);
     for (i = 0; i < IMAGE_POOL_SIZE; i++) {
-        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru,
-                &pdev->Res->dynamic->cache_image_pool[i].lru_link);
+        RingAdd(pdev, &pdev->Res->cache_image_lru,
+                &pdev->Res->cache_image_pool[i].lru_link);
     }
 
     RtlZeroMemory(pdev->Res->image_cache, sizeof(pdev->Res->image_cache));
     RtlZeroMemory(pdev->Res->cursor_cache, sizeof(pdev->Res->cursor_cache));
-    RingInit(&pdev->Res->dynamic->cursors_lru);
+    RingInit(&pdev->Res->cursors_lru);
     pdev->Res->num_cursors = 0;
     pdev->Res->last_cursor_id = 0;
 
     RtlZeroMemory(pdev->Res->palette_cache, sizeof(pdev->Res->palette_cache));
-    RingInit(&pdev->Res->dynamic->palette_lru);
+    RingInit(&pdev->Res->palette_lru);
     pdev->Res->num_palettes = 0;
     
     pdev->Res->driver = pdev->driver;
@@ -1347,7 +1338,7 @@ static void ImageCacheRemove(PDev *pdev, CacheImage *cache_image)
 static CacheImage *AllocCacheImage(PDev* pdev)
 {
     RingItem *item;
-    while (!(item = RingGetTail(pdev, &pdev->Res->dynamic->cache_image_lru))) {
+    while (!(item = RingGetTail(pdev, &pdev->Res->cache_image_lru))) {
 	/* malloc_sem protects release_ring too */
         EngAcquireSemaphore(pdev->Res->malloc_sem);
         if (pdev->Res->free_outputs == 0 &&
@@ -1435,7 +1426,7 @@ static _inline InternalPalette *PaletteCacheGet(PDev *pdev, UINT32 unique)
     while (now) {
         if (now->palette.unique == unique) {
             RingRemove(pdev, &now->lru_link);
-            RingAdd(pdev, &pdev->Res->dynamic->palette_lru, &now->lru_link);
+            RingAdd(pdev, &pdev->Res->palette_lru, &now->lru_link);
             now->refs++;
             DEBUG_PRINT((pdev, 13, "%s: found\n", __FUNCTION__));
             return now;
@@ -1458,8 +1449,8 @@ static _inline void PaletteCacheAdd(PDev *pdev, InternalPalette *palette)
     }
 
     if (pdev->Res->num_palettes == PALETTE_CACHE_SIZE) {
-        ASSERT(pdev, RingGetTail(pdev, &pdev->Res->dynamic->palette_lru));
-        PaletteCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->dynamic->palette_lru),
+        ASSERT(pdev, RingGetTail(pdev, &pdev->Res->palette_lru));
+        PaletteCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->palette_lru),
                                              InternalPalette, lru_link));
     }
 
@@ -1467,7 +1458,7 @@ static _inline void PaletteCacheAdd(PDev *pdev, InternalPalette *palette)
     palette->next = pdev->Res->palette_cache[key];
     pdev->Res->palette_cache[key] = palette;
 
-    RingAdd(pdev, &pdev->Res->dynamic->palette_lru, &palette->lru_link);
+    RingAdd(pdev, &pdev->Res->palette_lru, &palette->lru_link);
     palette->refs++;
     pdev->Res->num_palettes++;
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
@@ -1512,7 +1503,7 @@ static void FreeQuicImage(PDev *pdev, Resource *res) // todo: defer
 
     internal = (InternalImage *)res->res;
     if (internal->cache) {
-        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru, &internal->cache->lru_link);
+        RingAdd(pdev, &pdev->Res->cache_image_lru, &internal->cache->lru_link);
         internal->cache->image = NULL;
     }
 
@@ -1668,7 +1659,7 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
 
     internal = (InternalImage *)res->res;
     if (internal->cache) {
-        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru, &internal->cache->lru_link);
+        RingAdd(pdev, &pdev->Res->cache_image_lru, &internal->cache->lru_link);
         internal->cache->image = NULL;
     }
 
@@ -1991,7 +1982,7 @@ static CacheImage *GetChachImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_tran
         cache_image->width = surf->sizlBitmap.cx;
         cache_image->height = surf->sizlBitmap.cy;
         ImageCacheAdd(pdev, cache_image);
-        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru, &cache_image->lru_link);
+        RingAdd(pdev, &pdev->Res->cache_image_lru, &cache_image->lru_link);
         DEBUG_PRINT((pdev, 11, "%s: ImageCacheAdd %u\n", __FUNCTION__, key));
     }
     return NULL;
@@ -2289,7 +2280,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
         cache_image->width = surf->sizlBitmap.cx;
         cache_image->height = surf->sizlBitmap.cy;
         ImageCacheAdd(pdev, cache_image);
-        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru, &cache_image->lru_link);
+        RingAdd(pdev, &pdev->Res->cache_image_lru, &cache_image->lru_link);
         DEBUG_PRINT((pdev, 11, "%s: ImageCacheAdd %u\n", __FUNCTION__, key));
     }
 
@@ -2730,8 +2721,8 @@ static void CursorCacheAdd(PDev *pdev, InternalCursor *cursor)
     }
 
     if (pdev->Res->num_cursors == CURSOR_CACHE_SIZE) {
-        ASSERT(pdev, RingGetTail(pdev, &pdev->Res->dynamic->cursors_lru));
-        CursorCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->dynamic->cursors_lru),
+        ASSERT(pdev, RingGetTail(pdev, &pdev->Res->cursors_lru));
+        CursorCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->cursors_lru),
                                             InternalCursor, lru_link));
     }
 
@@ -2739,7 +2730,7 @@ static void CursorCacheAdd(PDev *pdev, InternalCursor *cursor)
     cursor->next = pdev->Res->cursor_cache[key];
     pdev->Res->cursor_cache[key] = cursor;
 
-    RingAdd(pdev, &pdev->Res->dynamic->cursors_lru, &cursor->lru_link);
+    RingAdd(pdev, &pdev->Res->cursors_lru, &cursor->lru_link);
     GET_RES((Resource *)((UINT8 *)cursor - sizeof(Resource)));
     pdev->Res->num_cursors++;
 }
@@ -2759,7 +2750,7 @@ static InternalCursor *CursorCacheGet(PDev *pdev, HSURF hsurf, UINT32 unique)
         if (now->hsurf == hsurf) {
             if (now->unique == unique) {
                 RingRemove(pdev, &now->lru_link);
-                RingAdd(pdev, &pdev->Res->dynamic->cursors_lru, &now->lru_link);
+                RingAdd(pdev, &pdev->Res->cursors_lru, &now->lru_link);
                 return now;
             }
             CursorCacheRemove(pdev, now);

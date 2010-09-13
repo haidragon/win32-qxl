@@ -145,13 +145,6 @@ typedef struct PMemSlot {
     QXLPHYSICAL high_bits;
 } PMemSlot;
 
-typedef struct DevResDynamic {
-    CacheImage cache_image_pool[IMAGE_POOL_SIZE];
-    Ring cache_image_lru;
-    Ring cursors_lru;
-    Ring palette_lru;
-} DevResDynamic;
-
 typedef struct MspaceInfo {
     mspace _mspace;
     UINT8 *mspace_start;
@@ -190,7 +183,10 @@ typedef struct DevRes {
     UINT64 free_outputs;
     UINT32 update_id;
 
-    DevResDynamic *dynamic;
+    CacheImage cache_image_pool[IMAGE_POOL_SIZE];
+    Ring cache_image_lru;
+    Ring cursors_lru;
+    Ring palette_lru;
 
     ImageKey image_key_lookup[IMAGE_KEY_HASH_SIZE];
     struct CacheImage *image_cache[IMAGE_HASH_SIZE];
