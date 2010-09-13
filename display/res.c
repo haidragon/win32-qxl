@@ -158,6 +158,7 @@ static _inline void CursorCmdAddRes(PDev *pdev, QXLCursorCmd *cmd, Resource *res
     AddRes(pdev, output, res);
 }
 
+/* Called with cursor_sem held */
 static void WaitForCursorRing(PDev* pdev)
 {
     int wait;
@@ -394,6 +395,10 @@ void CleanGlobalRes()
                     EngDeleteSemaphore(res->cmd_sem);
                     res->cmd_sem = NULL;
                 }
+                if (res->cursor_sem) {
+                    EngDeleteSemaphore(res->cursor_sem);
+                    res->cursor_sem = NULL;
+                }
                 if (res->print_sem) {
                     EngDeleteSemaphore(res->print_sem);
                     res->print_sem = NULL;
@@ -458,6 +463,10 @@ static void InitRes(PDev *pdev)
     pdev->Res->cmd_sem = EngCreateSemaphore();
     if (!pdev->Res->cmd_sem) {
         PANIC(pdev, "Res cmd sem creation failed\n");
+    }
+    pdev->Res->cursor_sem = EngCreateSemaphore();
+    if (!pdev->Res->cursor_sem) {
+        PANIC(pdev, "Res cursor sem creation failed\n");
     }
     pdev->Res->print_sem = EngCreateSemaphore();
     if (!pdev->Res->print_sem) {
@@ -2695,11 +2704,13 @@ void PushCursorCmd(PDev *pdev, QXLCursorCmd *cursor_cmd)
     QXLCommand *cmd;
 
     DEBUG_PRINT((pdev, 6, "%s\n", __FUNCTION__));
+    EngAcquireSemaphore(pdev->Res->cursor_sem);
     WaitForCursorRing(pdev);
     cmd = SPICE_RING_PROD_ITEM(pdev->cursor_ring);
     cmd->type = QXL_CMD_CURSOR;
     cmd->data = PA(pdev, cursor_cmd, pdev->main_mem_slot);
     PUSH_CURSOR_CMD(pdev);
+    EngReleaseSemaphore(pdev->Res->cursor_sem);
     DEBUG_PRINT((pdev, 8, "%s: done\n", __FUNCTION__));
 }
 
