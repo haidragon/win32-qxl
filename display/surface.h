@@ -37,26 +37,37 @@ static _inline void FreeSurface(PDev *pdev, UINT32 surface_id)
     if (surface_id == 0) {
         return;
     }
+
+    EngAcquireSemaphore(pdev->Res->surface_sem);
+
     surface = &pdev->Res->surfaces_info[surface_id];
     surface->draw_area.base_mem = NULL; /* Mark as not used */
     surface->u.next_free = pdev->Res->free_surfaces;
     pdev->Res->free_surfaces = surface;
+
+    EngReleaseSemaphore(pdev->Res->surface_sem);
 }
 
 
 static UINT32 GetFreeSurface(PDev *pdev)
 {
-    UINT32 x;
+    UINT32 x, id;
     SurfaceInfo *surface;
+
+    EngAcquireSemaphore(pdev->Res->surface_sem);
 
     surface = pdev->Res->free_surfaces;
     if (surface == NULL) {
-        return 0;
+        id = 0;
+    } else {
+      pdev->Res->free_surfaces = surface->u.next_free;
+
+      id = surface - pdev->Res->surfaces_info;
     }
 
-    pdev->Res->free_surfaces = surface->u.next_free;
+    EngReleaseSemaphore(pdev->Res->surface_sem);
 
-    return surface - pdev->Res->surfaces_info;
+    return id;
 }
 
 enum {

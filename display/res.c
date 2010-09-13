@@ -398,6 +398,10 @@ void CleanGlobalRes()
                     EngDeleteSemaphore(res->print_sem);
                     res->print_sem = NULL;
                 }
+                if (res->surface_sem) {
+                    EngDeleteSemaphore(res->surface_sem);
+                    res->surface_sem = NULL;
+                }
                 EngFreeMem(res);
             }
         }
@@ -431,9 +435,13 @@ static void InitRes(PDev *pdev)
 {
     UINT32 i;
 
-   pdev->Res->surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
-							 sizeof(SurfaceInfo) * pdev->n_surfaces, 
-							 ALLOC_TAG);
+    pdev->Res->surface_sem = EngCreateSemaphore();
+    if (!pdev->Res->surface_sem) {
+        PANIC(pdev, "Res surface sem creation failed\n");
+    }
+    pdev->Res->surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
+							  sizeof(SurfaceInfo) * pdev->n_surfaces, 
+							  ALLOC_TAG);
     if (!pdev->Res->surfaces_info) {
         PANIC(pdev, "Res surfaces_info allocation failed\n");
     }
