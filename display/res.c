@@ -122,7 +122,7 @@ UINT64 ReleaseOutput(PDev *pdev, UINT64 output_id)
     next = *(UINT64*)output->data;
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, output);
     DEBUG_PRINT((pdev, 10, "%s done\n", __FUNCTION__));
-    ONDBG(pdev->Res.num_outputs--); //todo: atomic
+    ONDBG(pdev->Res->num_outputs--); //todo: atomic
     return next;
 }
 
@@ -272,14 +272,14 @@ static void WaitForReleaseRing(PDev* pdev)
 #ifdef DBG
             DEBUG_PRINT((pdev, 0, "%s: 0x%lx: timeout\n", __FUNCTION__, pdev));
             DEBUG_PRINT((pdev, 0, "\tfree %d out %d path %d rect %d bits %d\n",
-                         pdev->Res.num_free_pages,
-                         pdev->Res.num_outputs,
-                         pdev->Res.num_path_pages,
-                         pdev->Res.num_rects_pages,
-                         pdev->Res.num_bits_pages,
-                         pdev->Res.num_buf_pages,
-                         pdev->Res.num_glyphs_pages,
-                         pdev->Res.num_cursor_pages));
+                         pdev->Res->num_free_pages,
+                         pdev->Res->num_outputs,
+                         pdev->Res->num_path_pages,
+                         pdev->Res->num_rects_pages,
+                         pdev->Res->num_bits_pages,
+                         pdev->Res->num_buf_pages,
+                         pdev->Res->num_glyphs_pages,
+                         pdev->Res->num_cursor_pages));
 #endif
             //oom
             WRITE_PORT_UCHAR(pdev->notify_oom_port, 0);
@@ -295,7 +295,7 @@ static void FlushReleaseRing(PDev *pdev)
     int notify;
     int num_to_release = 50;
 
-    output = pdev->Res.free_outputs;
+    output = pdev->Res->free_outputs;
 
     while (1) {
         while (output != 0) {
@@ -314,7 +314,7 @@ static void FlushReleaseRing(PDev *pdev)
         SPICE_RING_POP(pdev->release_ring, notify);
     }
 
-    pdev->Res.free_outputs = output;
+    pdev->Res->free_outputs = output;
 }
 
 // todo: separate VRAM releases from DEVRAM releases
@@ -323,22 +323,22 @@ static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size, BOOL force)
 {
     UINT8 *ptr;
 
-    ASSERT(pdev, pdev && pdev->Res.mspaces[mspace_type]._mspace);
+    ASSERT(pdev, pdev && pdev->Res->mspaces[mspace_type]._mspace);
     DEBUG_PRINT((pdev, 12, "%s: 0x%lx size %u\n", __FUNCTION__, pdev, size));
 
-    EngAcquireSemaphore(pdev->Res.malloc_sem);
+    EngAcquireSemaphore(pdev->Res->malloc_sem);
 
     while (1) {
         /* Release lots of queued resources, before allocating, as we
            want to release early to minimize fragmentation risks. */
         FlushReleaseRing(pdev);
 
-        ptr = mspace_malloc(pdev->Res.mspaces[mspace_type]._mspace, size);
+        ptr = mspace_malloc(pdev->Res->mspaces[mspace_type]._mspace, size);
         if (ptr) {
             break;
         }
 
-        if (pdev->Res.free_outputs != 0 ||
+        if (pdev->Res->free_outputs != 0 ||
             !SPICE_RING_IS_EMPTY(pdev->release_ring)) {
             /* We have more things to free, try that */
             continue;
@@ -353,44 +353,49 @@ static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size, BOOL force)
         }
     }
 
-    EngReleaseSemaphore(pdev->Res.malloc_sem);
-    ASSERT(pdev, (!ptr && !force) || (ptr >= pdev->Res.mspaces[mspace_type].mspace_start &&
-                                      ptr < pdev->Res.mspaces[mspace_type].mspace_end));
+    EngReleaseSemaphore(pdev->Res->malloc_sem);
+    ASSERT(pdev, (!ptr && !force) || (ptr >= pdev->Res->mspaces[mspace_type].mspace_start &&
+                                      ptr < pdev->Res->mspaces[mspace_type].mspace_end));
     DEBUG_PRINT((pdev, 13, "%s: 0x%lx done 0x%x\n", __FUNCTION__, pdev, ptr));
     return ptr;
 }
 
 static void FreeMem(PDev* pdev, UINT32 mspace_type, void *ptr)
 {
-    ASSERT(pdev, pdev && pdev->Res.mspaces[mspace_type]._mspace);
-    ASSERT(pdev, (UINT8 *)ptr >= pdev->Res.mspaces[mspace_type].mspace_start && 
-                 (UINT8 *)ptr < pdev->Res.mspaces[mspace_type].mspace_end);
-    EngAcquireSemaphore(pdev->Res.malloc_sem);
-    mspace_free(pdev->Res.mspaces[mspace_type]._mspace, ptr);
-    EngReleaseSemaphore(pdev->Res.malloc_sem);
+    ASSERT(pdev, pdev && pdev->Res->mspaces[mspace_type]._mspace);
+    ASSERT(pdev, (UINT8 *)ptr >= pdev->Res->mspaces[mspace_type].mspace_start && 
+                 (UINT8 *)ptr < pdev->Res->mspaces[mspace_type].mspace_end);
+    EngAcquireSemaphore(pdev->Res->malloc_sem);
+    mspace_free(pdev->Res->mspaces[mspace_type]._mspace, ptr);
+    EngReleaseSemaphore(pdev->Res->malloc_sem);
 }
 
-DevRes *global_res = NULL;
+DevRes **global_res = NULL;
 UINT8 num_global_res = 0;
 HSEMAPHORE res_sem = NULL;
 
 void CleanGlobalRes()
 {
     UINT32 i;
+    DevRes *res;
 
     if (global_res) {
         for (i = 0; i < num_global_res; ++i) {
-            if (global_res[i].dynamic) {
-                EngFreeMem(global_res[i].dynamic);
-                global_res[i].dynamic = NULL;
-            }
-            if (global_res[i].surfaces_info) {
-                EngFreeMem(global_res[i].surfaces_info);
-                global_res[i].surfaces_info = NULL;
-            }
-            if (global_res[i].malloc_sem) {
-                EngDeleteSemaphore(global_res[i].malloc_sem);
-                global_res[i].malloc_sem = NULL;
+            res = global_res[i];
+            if (res != NULL) {
+                if (res->dynamic) {
+                    EngFreeMem(res->dynamic);
+                    res->dynamic = NULL;
+                }
+                if (res->surfaces_info) {
+                    EngFreeMem(res->surfaces_info);
+                    res->surfaces_info = NULL;
+                }
+                if (res->malloc_sem) {
+                    EngDeleteSemaphore(res->malloc_sem);
+                    res->malloc_sem = NULL;
+                }
+                EngFreeMem(res);
             }
         }
         EngFreeMem(global_res);
@@ -423,67 +428,67 @@ static void InitRes(PDev *pdev)
 {
     UINT32 i;
 
-    pdev->Res.dynamic = EngAllocMem(FL_ZERO_MEMORY, sizeof(DevResDynamic), ALLOC_TAG);
-    if (!pdev->Res.dynamic) {
+    pdev->Res->dynamic = EngAllocMem(FL_ZERO_MEMORY, sizeof(DevResDynamic), ALLOC_TAG);
+    if (!pdev->Res->dynamic) {
         PANIC(pdev, "Res dynamic allocation failed\n");
     }
 
-   pdev->Res.surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
+   pdev->Res->surfaces_info = (SurfaceInfo *)EngAllocMem(FL_ZERO_MEMORY,
 							 sizeof(SurfaceInfo) * pdev->n_surfaces, 
 							 ALLOC_TAG);
-    if (!pdev->Res.surfaces_info) {
+    if (!pdev->Res->surfaces_info) {
         PANIC(pdev, "Res surfaces_info allocation failed\n");
     }
-    pdev->Res.free_surfaces = &pdev->Res.surfaces_info[0];
+    pdev->Res->free_surfaces = &pdev->Res->surfaces_info[0];
     for (i = 0; i < pdev->n_surfaces - 1; i++) {
-        pdev->Res.surfaces_info[i].u.next_free = &pdev->Res.surfaces_info[i+1];
+        pdev->Res->surfaces_info[i].u.next_free = &pdev->Res->surfaces_info[i+1];
     }
 
-    pdev->Res.free_outputs = 0;
-    pdev->Res.malloc_sem = EngCreateSemaphore();
-    if (!pdev->Res.malloc_sem) {
+    pdev->Res->free_outputs = 0;
+    pdev->Res->malloc_sem = EngCreateSemaphore();
+    if (!pdev->Res->malloc_sem) {
         PANIC(pdev, "Res malloc sem creation failed\n");
     }
 
-    InitMspace(&pdev->Res, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
-    InitMspace(&pdev->Res, MSPACE_TYPE_VRAM, pdev->fb, pdev->fb_size);
-    pdev->Res.update_id = *pdev->dev_update_id;
+    InitMspace(pdev->Res, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
+    InitMspace(pdev->Res, MSPACE_TYPE_VRAM, pdev->fb, pdev->fb_size);
+    pdev->Res->update_id = *pdev->dev_update_id;
 
-    RtlZeroMemory(pdev->Res.image_key_lookup,
-                  sizeof(pdev->Res.image_key_lookup));
-    RtlZeroMemory(pdev->Res.dynamic->cache_image_pool,
-                  sizeof(pdev->Res.dynamic->cache_image_pool));
-    RingInit(&pdev->Res.dynamic->cache_image_lru);
+    RtlZeroMemory(pdev->Res->image_key_lookup,
+                  sizeof(pdev->Res->image_key_lookup));
+    RtlZeroMemory(pdev->Res->dynamic->cache_image_pool,
+                  sizeof(pdev->Res->dynamic->cache_image_pool));
+    RingInit(&pdev->Res->dynamic->cache_image_lru);
     for (i = 0; i < IMAGE_POOL_SIZE; i++) {
-        RingAdd(pdev, &pdev->Res.dynamic->cache_image_lru,
-                &pdev->Res.dynamic->cache_image_pool[i].lru_link);
+        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru,
+                &pdev->Res->dynamic->cache_image_pool[i].lru_link);
     }
 
-    RtlZeroMemory(pdev->Res.image_cache, sizeof(pdev->Res.image_cache));
-    RtlZeroMemory(pdev->Res.cursor_cache, sizeof(pdev->Res.cursor_cache));
-    RingInit(&pdev->Res.dynamic->cursors_lru);
-    pdev->Res.num_cursors = 0;
-    pdev->Res.last_cursor_id = 0;
+    RtlZeroMemory(pdev->Res->image_cache, sizeof(pdev->Res->image_cache));
+    RtlZeroMemory(pdev->Res->cursor_cache, sizeof(pdev->Res->cursor_cache));
+    RingInit(&pdev->Res->dynamic->cursors_lru);
+    pdev->Res->num_cursors = 0;
+    pdev->Res->last_cursor_id = 0;
 
-    RtlZeroMemory(pdev->Res.palette_cache, sizeof(pdev->Res.palette_cache));
-    RingInit(&pdev->Res.dynamic->palette_lru);
-    pdev->Res.num_palettes = 0;
+    RtlZeroMemory(pdev->Res->palette_cache, sizeof(pdev->Res->palette_cache));
+    RingInit(&pdev->Res->dynamic->palette_lru);
+    pdev->Res->num_palettes = 0;
     
-    pdev->Res.driver = pdev->driver;
+    pdev->Res->driver = pdev->driver;
 
-    ONDBG(pdev->Res.num_outputs = 0);
-    ONDBG(pdev->Res.num_path_pages = 0);
-    ONDBG(pdev->Res.num_rects_pages = 0);
-    ONDBG(pdev->Res.num_bits_pages = 0);
-    ONDBG(pdev->Res.num_buf_pages = 0);
-    ONDBG(pdev->Res.num_glyphs_pages = 0);
-    ONDBG(pdev->Res.num_cursor_pages = 0);
+    ONDBG(pdev->Res->num_outputs = 0);
+    ONDBG(pdev->Res->num_path_pages = 0);
+    ONDBG(pdev->Res->num_rects_pages = 0);
+    ONDBG(pdev->Res->num_bits_pages = 0);
+    ONDBG(pdev->Res->num_buf_pages = 0);
+    ONDBG(pdev->Res->num_glyphs_pages = 0);
+    ONDBG(pdev->Res->num_cursor_pages = 0);
 
 #ifdef CALL_TEST
-    pdev->Res.count_calls = TRUE;
-    pdev->Res.total_calls = 0;
+    pdev->Res->count_calls = TRUE;
+    pdev->Res->total_calls = 0;
     for (i = 0; i < NUM_CALL_COUNTERS; i++) {
-        pdev->Res.call_counters[i] = 0;
+        pdev->Res->call_counters[i] = 0;
     }
 #endif
 }
@@ -492,7 +497,7 @@ void InitResources(PDev *pdev)
 {
     UINT32 i;
     UINT32 id;
-    DevRes *new_global_res;
+    DevRes **new_global_res;
 
     RtlZeroMemory(pdev->update_trace_items, sizeof(pdev->update_trace_items));
     RingInit(&pdev->update_trace);
@@ -503,45 +508,28 @@ void InitResources(PDev *pdev)
     EngAcquireSemaphore(res_sem);
 
     id = pdev->dev_id;
-    if (num_global_res > id) {
-        if (!global_res[id].dynamic) {
-            InitRes(pdev);
-        } else {
-            pdev->Res = global_res[id];
+    if (id >= num_global_res) {
+        new_global_res = EngAllocMem(FL_ZERO_MEMORY, (id + 1) * sizeof(DevRes *), ALLOC_TAG);
+        if (!new_global_res) {
+            PANIC(pdev, "new_global_res malloc failed\n");
         }
-        EngReleaseSemaphore(res_sem);
-        return;
+        for (i = 0; i < num_global_res; ++i) {
+            new_global_res[i] = global_res[i];
+        }
+        if (global_res) {
+            EngFreeMem(global_res);
+        }
+        num_global_res = id + 1;
+        global_res = new_global_res;
     }
 
-    new_global_res = EngAllocMem(FL_ZERO_MEMORY, (id + 1) * sizeof(DevRes), ALLOC_TAG);
-    if (!new_global_res) {
-        PANIC(pdev, "new_global_res malloc failed\n");
+    if (global_res[id] == NULL) {
+        global_res[id] = EngAllocMem(FL_ZERO_MEMORY, sizeof(DevRes), ALLOC_TAG);
+	pdev->Res = global_res[id];
+        InitRes(pdev);
+    } else {
+	pdev->Res = global_res[id];
     }
-    for (i = 0; i < num_global_res; ++i) {
-        new_global_res[i] = global_res[i];
-    }
-    if (global_res) {
-        EngFreeMem(global_res);
-    }
-    num_global_res = id + 1;
-    global_res = new_global_res;
-    InitRes(pdev);
-
-    EngReleaseSemaphore(res_sem);
-}
-
-void SyncResources(PDev *pdev)
-{
-    UINT32 id;
-    DevRes *res;
-
-    EngAcquireSemaphore(res_sem);
-
-    id = pdev->dev_id;
-    res = &global_res[id];
-
-    *res = pdev->Res;
-
     EngReleaseSemaphore(res_sem);
 }
 
@@ -553,7 +541,7 @@ static QXLDrawable *GetDrawable(PDev *pdev)
     output->num_res = 0;
     ((QXLDrawable *)output->data)->release_info.id = (UINT64)output;
     DEBUG_PRINT((pdev, 9, "%s 0x%x\n", __FUNCTION__, output));
-    ONDBG(pdev->Res.num_outputs++); //todo: atomic
+    ONDBG(pdev->Res->num_outputs++); //todo: atomic
     return(QXLDrawable *)output->data;
 }
 
@@ -601,7 +589,7 @@ static QXLSurfaceCmd *GetSurfaceCmd(PDev *pdev)
     output->num_res = 0;
     ((QXLSurfaceCmd *)output->data)->release_info.id = (UINT64)output;
     DEBUG_PRINT((pdev, 9, "%s 0x%x\n", __FUNCTION__, output));
-    ONDBG(pdev->Res.num_outputs++); //todo: atomic
+    ONDBG(pdev->Res->num_outputs++); //todo: atomic
     return(QXLSurfaceCmd *)output->data;
 }
 
@@ -741,10 +729,10 @@ static void FreePath(PDev *pdev, Resource *res)
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
-        ONDBG(pdev->Res.num_path_pages--);
+        ONDBG(pdev->Res->num_path_pages--);
     }
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
-    ONDBG(pdev->Res.num_path_pages--);
+    ONDBG(pdev->Res->num_path_pages--);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
@@ -848,7 +836,7 @@ static Resource *__GetPath(PDev *pdev, PATHOBJ *path)
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, PATH_ALLOC_SIZE);
-    ONDBG(pdev->Res.num_path_pages++);
+    ONDBG(pdev->Res->num_path_pages++);
     res->refs = 1;
     res->free = FreePath;
 
@@ -862,7 +850,7 @@ static Resource *__GetPath(PDev *pdev, PATHOBJ *path)
     now = chunk->data;
     end = (UINT8 *)res + PATH_ALLOC_SIZE;
     GetPathCommon(pdev, path, &chunk, &now, &end, &qxl_path->data_size,
-                  &pdev->Res.num_path_pages);
+                  &pdev->Res->num_path_pages);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
     return res;
@@ -894,10 +882,10 @@ static void FreeClipRects(PDev *pdev, Resource *res)
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
-        ONDBG(pdev->Res.num_rects_pages--);
+        ONDBG(pdev->Res->num_rects_pages--);
     }
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
-    ONDBG(pdev->Res.num_rects_pages--);
+    ONDBG(pdev->Res->num_rects_pages--);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
@@ -920,7 +908,7 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, RECTS_ALLOC_SIZE);
-    ONDBG(pdev->Res.num_rects_pages++);
+    ONDBG(pdev->Res->num_rects_pages++);
     res->refs = 1;
     res->free = FreeClipRects;
     rects = (QXLClipRects *)res->res;
@@ -948,7 +936,7 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
         for (now = buf.rects, end = now + buf.count; now < end; now++, dest++) {
             if (dest == dest_end) {
                 void *page = AllocMem(pdev, MSPACE_TYPE_DEVRAM, RECTS_CHUNK_ALLOC_SIZE);
-                ONDBG(pdev->Res.num_rects_pages++);
+                ONDBG(pdev->Res->num_rects_pages++);
                 chunk->next_chunk = PA(pdev, page, pdev->main_mem_slot);
                 ((QXLDataChunk *)page)->prev_chunk = PA(pdev, chunk, pdev->main_mem_slot);
                 chunk = (QXLDataChunk *)page;
@@ -1289,7 +1277,7 @@ typedef struct InternalImage {
 
 void ImageKeyPut(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 key)
 {
-    ImageKey *image_key = &pdev->Res.image_key_lookup[IMAGE_KEY_HASH_VAL(hsurf)];
+    ImageKey *image_key = &pdev->Res->image_key_lookup[IMAGE_KEY_HASH_VAL(hsurf)];
 
     if (!unique) {
         return;
@@ -1306,7 +1294,7 @@ BOOL ImageKeyGet(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 *key)
     if (!unique) {
         return FALSE;
     }
-    image_key = &pdev->Res.image_key_lookup[IMAGE_KEY_HASH_VAL(hsurf)];
+    image_key = &pdev->Res->image_key_lookup[IMAGE_KEY_HASH_VAL(hsurf)];
     if (image_key->hsurf == hsurf && image_key->unique == unique) {
         *key = image_key->key;
         return TRUE;
@@ -1319,7 +1307,7 @@ BOOL ImageKeyGet(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 *key)
 static CacheImage *ImageCacheGetByKey(PDev *pdev, UINT32 key, BOOL check_rest,
                                       UINT8 format, UINT32 width, UINT32 height)
 {
-    CacheImage *cache_image = pdev->Res.image_cache[IMAGE_HASH_VAL(key)];
+    CacheImage *cache_image = pdev->Res->image_cache[IMAGE_HASH_VAL(key)];
 
     while (cache_image) {
         if (cache_image->key == key && (!check_rest || (cache_image->format == format &&
@@ -1334,9 +1322,9 @@ static CacheImage *ImageCacheGetByKey(PDev *pdev, UINT32 key, BOOL check_rest,
 static void ImageCacheAdd(PDev *pdev, CacheImage *cache_image)
 {
     int key = IMAGE_HASH_VAL(cache_image->key);
-    cache_image->next = pdev->Res.image_cache[key];
+    cache_image->next = pdev->Res->image_cache[key];
     cache_image->hits = 1;
-    pdev->Res.image_cache[key] = cache_image;
+    pdev->Res->image_cache[key] = cache_image;
 }
 
 static void ImageCacheRemove(PDev *pdev, CacheImage *cache_image)
@@ -1346,7 +1334,7 @@ static void ImageCacheRemove(PDev *pdev, CacheImage *cache_image)
     if (!cache_image->hits) {
         return;
     }
-    cache_img = &pdev->Res.image_cache[IMAGE_HASH_VAL(cache_image->key)];
+    cache_img = &pdev->Res->image_cache[IMAGE_HASH_VAL(cache_image->key)];
     while (*cache_img) {
         if ((*cache_img)->key == cache_image->key) {
             *cache_img = cache_image->next;
@@ -1359,15 +1347,15 @@ static void ImageCacheRemove(PDev *pdev, CacheImage *cache_image)
 static CacheImage *AllocCacheImage(PDev* pdev)
 {
     RingItem *item;
-    while (!(item = RingGetTail(pdev, &pdev->Res.dynamic->cache_image_lru))) {
+    while (!(item = RingGetTail(pdev, &pdev->Res->dynamic->cache_image_lru))) {
 	/* malloc_sem protects release_ring too */
-        EngAcquireSemaphore(pdev->Res.malloc_sem);
-        if (pdev->Res.free_outputs == 0 &&
+        EngAcquireSemaphore(pdev->Res->malloc_sem);
+        if (pdev->Res->free_outputs == 0 &&
             SPICE_RING_IS_EMPTY(pdev->release_ring)) {
             WaitForReleaseRing(pdev);
         }
         FlushReleaseRing(pdev);
-	EngReleaseSemaphore(pdev->Res.malloc_sem);
+	EngReleaseSemaphore(pdev->Res->malloc_sem);
     }
     RingRemove(pdev, item);
     return CONTAINEROF(item, CacheImage, lru_link);
@@ -1418,14 +1406,14 @@ static _inline void PaletteCacheRemove(PDev *pdev, InternalPalette *palette)
     DEBUG_PRINT((pdev, 15, "%s\n", __FUNCTION__));
 
     ASSERT(pdev, palette->palette.unique);
-    internal = &pdev->Res.palette_cache[PALETTE_HASH_VAL(palette->palette.unique)];
+    internal = &pdev->Res->palette_cache[PALETTE_HASH_VAL(palette->palette.unique)];
 
     while (*internal) {
         if ((*internal)->palette.unique == palette->palette.unique) {
             *internal = palette->next;
             RingRemove(pdev, &palette->lru_link);
             ReleasePalette(pdev, palette);
-            pdev->Res.num_palettes--;
+            pdev->Res->num_palettes--;
             DEBUG_PRINT((pdev, 16, "%s: done\n", __FUNCTION__));
             return;
         }
@@ -1443,11 +1431,11 @@ static _inline InternalPalette *PaletteCacheGet(PDev *pdev, UINT32 unique)
         return NULL;
     }
 
-    now = pdev->Res.palette_cache[PALETTE_HASH_VAL(unique)];
+    now = pdev->Res->palette_cache[PALETTE_HASH_VAL(unique)];
     while (now) {
         if (now->palette.unique == unique) {
             RingRemove(pdev, &now->lru_link);
-            RingAdd(pdev, &pdev->Res.dynamic->palette_lru, &now->lru_link);
+            RingAdd(pdev, &pdev->Res->dynamic->palette_lru, &now->lru_link);
             now->refs++;
             DEBUG_PRINT((pdev, 13, "%s: found\n", __FUNCTION__));
             return now;
@@ -1469,19 +1457,19 @@ static _inline void PaletteCacheAdd(PDev *pdev, InternalPalette *palette)
         return;
     }
 
-    if (pdev->Res.num_palettes == PALETTE_CACHE_SIZE) {
-        ASSERT(pdev, RingGetTail(pdev, &pdev->Res.dynamic->palette_lru));
-        PaletteCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res.dynamic->palette_lru),
+    if (pdev->Res->num_palettes == PALETTE_CACHE_SIZE) {
+        ASSERT(pdev, RingGetTail(pdev, &pdev->Res->dynamic->palette_lru));
+        PaletteCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->dynamic->palette_lru),
                                              InternalPalette, lru_link));
     }
 
     key = PALETTE_HASH_VAL(palette->palette.unique);
-    palette->next = pdev->Res.palette_cache[key];
-    pdev->Res.palette_cache[key] = palette;
+    palette->next = pdev->Res->palette_cache[key];
+    pdev->Res->palette_cache[key] = palette;
 
-    RingAdd(pdev, &pdev->Res.dynamic->palette_lru, &palette->lru_link);
+    RingAdd(pdev, &pdev->Res->dynamic->palette_lru, &palette->lru_link);
     palette->refs++;
-    pdev->Res.num_palettes++;
+    pdev->Res->num_palettes++;
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
 
@@ -1524,7 +1512,7 @@ static void FreeQuicImage(PDev *pdev, Resource *res) // todo: defer
 
     internal = (InternalImage *)res->res;
     if (internal->cache) {
-        RingAdd(pdev, &pdev->Res.dynamic->cache_image_lru, &internal->cache->lru_link);
+        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru, &internal->cache->lru_link);
         internal->cache->image = NULL;
     }
 
@@ -1533,11 +1521,11 @@ static void FreeQuicImage(PDev *pdev, Resource *res) // todo: defer
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
-        ONDBG(pdev->Res.num_bits_pages--);
+        ONDBG(pdev->Res->num_bits_pages--);
 
     }
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
-    ONDBG(pdev->Res.num_bits_pages--);
+    ONDBG(pdev->Res->num_bits_pages--);
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
 
@@ -1596,7 +1584,7 @@ static int quic_usr_more_space(QuicUsrContext *usr, uint32_t **io_ptr, int rows_
 
     usr_data->chunk_io_words = alloc_size >> 2;
 
-    ONDBG(pdev->Res.num_bits_pages++);
+    ONDBG(pdev->Res->num_bits_pages++);
 
     *io_ptr = (UINT32 *)new_chank->data;
     return usr_data->chunk_io_words;
@@ -1636,7 +1624,7 @@ static _inline Resource *GetQuicImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color
     alloc_size = MAX(alloc_size, QUIC_ALLOC_BASE + QUIC_BUF_MIN);
 
     image_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
-    ONDBG(pdev->Res.num_bits_pages++);
+    ONDBG(pdev->Res->num_bits_pages++);
     image_res->refs = 1;
     image_res->free = FreeQuicImage;
 
@@ -1680,7 +1668,7 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
 
     internal = (InternalImage *)res->res;
     if (internal->cache) {
-        RingAdd(pdev, &pdev->Res.dynamic->cache_image_lru, &internal->cache->lru_link);
+        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru, &internal->cache->lru_link);
         internal->cache->image = NULL;
     }
 
@@ -1695,12 +1683,12 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
-        ONDBG(pdev->Res.num_bits_pages--);
+        ONDBG(pdev->Res->num_bits_pages--);
 
     }
 
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
-    ONDBG(pdev->Res.num_bits_pages--);
+    ONDBG(pdev->Res->num_bits_pages--);
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
 
@@ -1765,7 +1753,7 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     alloc_size = BITMAP_ALLOC_BASE + BITS_BUF_MAX - BITS_BUF_MAX % line_size;
     alloc_size = MIN(BITMAP_ALLOC_BASE + height * line_size, alloc_size);
     image_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
-    ONDBG(pdev->Res.num_bits_pages++);
+    ONDBG(pdev->Res->num_bits_pages++);
 
     image_res->refs = 1;
     image_res->free = FreeBitmapImage;
@@ -1796,7 +1784,7 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
 
     for (; src != src_end; src -= surf->lDelta, alloc_size -= line_size) {
         PutBytesAlign(pdev, &chunk, &dest, &dest_end, src, line_size,
-                      &pdev->Res.num_bits_pages, alloc_size, line_size, TRUE);
+                      &pdev->Res->num_bits_pages, alloc_size, line_size, TRUE);
     }
 
     if (use_sse) {
@@ -2003,7 +1991,7 @@ static CacheImage *GetChachImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_tran
         cache_image->width = surf->sizlBitmap.cx;
         cache_image->height = surf->sizlBitmap.cy;
         ImageCacheAdd(pdev, cache_image);
-        RingAdd(pdev, &pdev->Res.dynamic->cache_image_lru, &cache_image->lru_link);
+        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru, &cache_image->lru_link);
         DEBUG_PRINT((pdev, 11, "%s: ImageCacheAdd %u\n", __FUNCTION__, key));
     }
     return NULL;
@@ -2301,7 +2289,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
         cache_image->width = surf->sizlBitmap.cx;
         cache_image->height = surf->sizlBitmap.cy;
         ImageCacheAdd(pdev, cache_image);
-        RingAdd(pdev, &pdev->Res.dynamic->cache_image_lru, &cache_image->lru_link);
+        RingAdd(pdev, &pdev->Res->dynamic->cache_image_lru, &cache_image->lru_link);
         DEBUG_PRINT((pdev, 11, "%s: ImageCacheAdd %u\n", __FUNCTION__, key));
     }
 
@@ -2387,7 +2375,7 @@ BOOL QXLGetMask(PDev *pdev, QXLDrawable *drawable, QXLQMask *qxl_mask, SURFOBJ *
 
 static void FreeBuf(PDev *pdev, Resource *res)
 {
-    ONDBG(pdev->Res.num_buf_pages--);
+    ONDBG(pdev->Res->num_buf_pages--);
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
 }
 
@@ -2402,7 +2390,7 @@ UINT8 *QXLGetBuf(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *buf_phys, UINT3
     }
 
     buf_res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(Resource) + size);
-    ONDBG(pdev->Res.num_buf_pages++);
+    ONDBG(pdev->Res->num_buf_pages++);
     buf_res->refs = 1;
     buf_res->free = FreeBuf;
 
@@ -2425,10 +2413,10 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
     output->num_res = 0;
     updat_cmd = (QXLUpdateCmd *)output->data;
     updat_cmd->release_info.id = (UINT64)output;
-    ONDBG(pdev->Res.num_outputs++); //todo: atomic
+    ONDBG(pdev->Res->num_outputs++); //todo: atomic
 
     CopyRect(&updat_cmd->area, area);
-    updat_cmd->update_id = ++pdev->Res.update_id;
+    updat_cmd->update_id = ++pdev->Res->update_id;
     updat_cmd->surface_id = surface_id;
 
     WaitForCmdRing(pdev);
@@ -2446,7 +2434,7 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
 #else
             EngWaitForSingleObject(pdev->display_event, &timeout);
 #endif //(WINVER < 0x0501)
-            if (*pdev->dev_update_id != pdev->Res.update_id) {
+            if (*pdev->dev_update_id != pdev->Res->update_id) {
                 DEBUG_PRINT((pdev, 0, "%s: 0x%lx: timeout\n", __FUNCTION__, pdev));
             }
         }
@@ -2458,7 +2446,7 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
 #endif //(WINVER < 0x0501)
 #endif // DEBUG
         mb();
-    } while (*pdev->dev_update_id != pdev->Res.update_id);
+    } while (*pdev->dev_update_id != pdev->Res->update_id);
 }
 
 #else
@@ -2490,7 +2478,7 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
         UINT32 stride;
 
         if (end - now < sizeof(*glyph)) {
-            NEW_DATA_CHUNK(&pdev->Res.num_glyphs_pages, PAGE_SIZE);
+            NEW_DATA_CHUNK(&pdev->Res->num_glyphs_pages, PAGE_SIZE);
         }
 
         glyph = (QXLRasterGlyph *)now;
@@ -2530,7 +2518,7 @@ static _inline void add_rast_glyphs(PDev *pdev, QXLString *str, ULONG count, GLY
                 UINT8 val;
                 int i;
                 if (end - now < sizeof(*bits_pos)) {
-                    NEW_DATA_CHUNK(&pdev->Res.num_glyphs_pages, PAGE_SIZE);
+                    NEW_DATA_CHUNK(&pdev->Res->num_glyphs_pages, PAGE_SIZE);
                 }
                 *(UINT8 *)now = *bits_pos;
                 now += sizeof(*bits_pos);
@@ -2566,11 +2554,11 @@ static void FreeSring(PDev *pdev, Resource *res)
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
-        ONDBG(pdev->Res.num_glyphs_pages--);
+        ONDBG(pdev->Res->num_glyphs_pages--);
     }
 
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
-    ONDBG(pdev->Res.num_glyphs_pages--);
+    ONDBG(pdev->Res->num_glyphs_pages--);
 
     DEBUG_PRINT((pdev, 14, "%s: done\n", __FUNCTION__));
 }
@@ -2594,7 +2582,7 @@ BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *str_phys, FONTOBJ
     DEBUG_PRINT((pdev, 9, "%s\n", __FUNCTION__));
 
     str_res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, TEXT_ALLOC_SIZE);
-    ONDBG(pdev->Res.num_glyphs_pages++);
+    ONDBG(pdev->Res->num_glyphs_pages++);
     str_res->refs = 1;
     str_res->free = FreeSring;
 
@@ -2677,7 +2665,7 @@ QXLCursorCmd *CursorCmd(PDev *pdev)
     output->num_res = 0;
     cursor_cmd = (QXLCursorCmd *)output->data;
     cursor_cmd->release_info.id = (UINT64)output;
-    ONDBG(pdev->Res.num_outputs++); //todo: atomic
+    ONDBG(pdev->Res->num_outputs++); //todo: atomic
     DEBUG_PRINT((pdev, 8, "%s: done\n", __FUNCTION__));
     return cursor_cmd;
 }
@@ -2713,7 +2701,7 @@ static void CursorCacheRemove(PDev *pdev, InternalCursor *cursor)
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
     ASSERT(pdev, cursor->unique);
-    internal = &pdev->Res.cursor_cache[CURSOR_HASH_VAL(cursor->hsurf)];
+    internal = &pdev->Res->cursor_cache[CURSOR_HASH_VAL(cursor->hsurf)];
 
     while (*internal) {
         if ((*internal)->hsurf == cursor->hsurf) {
@@ -2721,7 +2709,7 @@ static void CursorCacheRemove(PDev *pdev, InternalCursor *cursor)
                 *internal = cursor->next;
                 RingRemove(pdev, &cursor->lru_link);
                 RELEASE_RES(pdev, (Resource *)((UINT8 *)cursor - sizeof(Resource)));
-                pdev->Res.num_cursors--;
+                pdev->Res->num_cursors--;
                 return;
             }
             DEBUG_PRINT((pdev, 0, "%s: unexpected\n", __FUNCTION__));
@@ -2741,19 +2729,19 @@ static void CursorCacheAdd(PDev *pdev, InternalCursor *cursor)
         return;
     }
 
-    if (pdev->Res.num_cursors == CURSOR_CACHE_SIZE) {
-        ASSERT(pdev, RingGetTail(pdev, &pdev->Res.dynamic->cursors_lru));
-        CursorCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res.dynamic->cursors_lru),
+    if (pdev->Res->num_cursors == CURSOR_CACHE_SIZE) {
+        ASSERT(pdev, RingGetTail(pdev, &pdev->Res->dynamic->cursors_lru));
+        CursorCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->dynamic->cursors_lru),
                                             InternalCursor, lru_link));
     }
 
     key = CURSOR_HASH_VAL(cursor->hsurf);
-    cursor->next = pdev->Res.cursor_cache[key];
-    pdev->Res.cursor_cache[key] = cursor;
+    cursor->next = pdev->Res->cursor_cache[key];
+    pdev->Res->cursor_cache[key] = cursor;
 
-    RingAdd(pdev, &pdev->Res.dynamic->cursors_lru, &cursor->lru_link);
+    RingAdd(pdev, &pdev->Res->dynamic->cursors_lru, &cursor->lru_link);
     GET_RES((Resource *)((UINT8 *)cursor - sizeof(Resource)));
-    pdev->Res.num_cursors++;
+    pdev->Res->num_cursors++;
 }
 
 static InternalCursor *CursorCacheGet(PDev *pdev, HSURF hsurf, UINT32 unique)
@@ -2765,13 +2753,13 @@ static InternalCursor *CursorCacheGet(PDev *pdev, HSURF hsurf, UINT32 unique)
         return NULL;
     }
 
-    internal = &pdev->Res.cursor_cache[CURSOR_HASH_VAL(hsurf)];
+    internal = &pdev->Res->cursor_cache[CURSOR_HASH_VAL(hsurf)];
     while (*internal) {
         InternalCursor *now = *internal;
         if (now->hsurf == hsurf) {
             if (now->unique == unique) {
                 RingRemove(pdev, &now->lru_link);
-                RingAdd(pdev, &pdev->Res.dynamic->cursors_lru, &now->lru_link);
+                RingAdd(pdev, &pdev->Res->dynamic->cursors_lru, &now->lru_link);
                 return now;
             }
             CursorCacheRemove(pdev, now);
@@ -2792,11 +2780,11 @@ static void FreeCursor(PDev *pdev, Resource *res)
         QXLDataChunk *chunk = (QXLDataChunk *)VA(pdev, chunk_phys, pdev->main_mem_slot);
         chunk_phys = chunk->next_chunk;
         FreeMem(pdev, MSPACE_TYPE_DEVRAM, chunk);
-        ONDBG(pdev->Res.num_cursor_pages--);
+        ONDBG(pdev->Res->num_cursor_pages--);
     }
 
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
-    ONDBG(pdev->Res.num_cursor_pages--);
+    ONDBG(pdev->Res->num_cursor_pages--);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
@@ -2876,7 +2864,7 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
 
     ASSERT(pdev, sizeof(Resource) + sizeof(InternalCursor) < CURSOR_ALLOC_SIZE);
     res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, CURSOR_ALLOC_SIZE);
-    ONDBG(pdev->Res.num_cursor_pages++);
+    ONDBG(pdev->Res->num_cursor_pages++);
     res->refs = 1;
     res->free = FreeCursor;
 
@@ -2887,7 +2875,7 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
 
     cursor = info->cursor = &internal->cursor;
     cursor->header.type = type;
-    cursor->header.unique = unique ? ++pdev->Res.last_cursor_id : 0;
+    cursor->header.unique = unique ? ++pdev->Res->last_cursor_id : 0;
     cursor->header.width = (UINT16)local_surf->sizlBitmap.cx;
     cursor->header.height = (type == SPICE_CURSOR_TYPE_MONO) ? (UINT16)local_surf->sizlBitmap.cy >> 1 :
                             (UINT16)local_surf->sizlBitmap.cy;
@@ -2931,7 +2919,7 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     src_end = src + (local_surf->lDelta * local_surf->sizlBitmap.cy);
     for (; src != src_end; src += local_surf->lDelta) {
         PutBytes(pdev, &info->chunk, &info->now, &info->end, src, line_size,
-                 &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
+                 &pdev->Res->num_cursor_pages, PAGE_SIZE, FALSE);
     }
 
     CursorCacheAdd(pdev, internal);
@@ -3050,14 +3038,14 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
 
             if (pdev->bitmap_format == BMF_32BPP) {
                 PutBytes(pdev, &info.chunk, &info.now, &info.end, (UINT8 *)color_trans->pulXlate,
-                         256 << 2, &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
+                         256 << 2, &pdev->Res->num_cursor_pages, PAGE_SIZE, FALSE);
             } else {
                 int i;
 
                 for (i = 0; i < 256; i++) {
                     UINT32 ent = _16bppTo32bpp(color_trans->pulXlate[i]);
                     PutBytes(pdev, &info.chunk, &info.now, &info.end, (UINT8 *)&ent,
-                             4, &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
+                             4, &pdev->Res->num_cursor_pages, PAGE_SIZE, FALSE);
                 }
             }
             info.cursor->data_size += 256 << 2;
@@ -3070,14 +3058,14 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
 
             if (pdev->bitmap_format == BMF_32BPP) {
                 PutBytes(pdev, &info.chunk, &info.now, &info.end, (UINT8 *)color_trans->pulXlate,
-                         16 << 2, &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
+                         16 << 2, &pdev->Res->num_cursor_pages, PAGE_SIZE, FALSE);
             } else {
                 int i;
 
                 for (i = 0; i < 16; i++) {
                     UINT32 ent = _16bppTo32bpp(color_trans->pulXlate[i]);
                     PutBytes(pdev, &info.chunk, &info.now, &info.end, (UINT8 *)&ent,
-                             4, &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
+                             4, &pdev->Res->num_cursor_pages, PAGE_SIZE, FALSE);
                 }
             }
             info.cursor->data_size += 16 << 2;
@@ -3093,7 +3081,7 @@ BOOL GetColorCursor(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_y, SURFO
 
         for (; src != src_end; src += mask->lDelta) {
             PutBytes(pdev, &info.chunk, &info.now, &info.end, src, line_size,
-                     &pdev->Res.num_cursor_pages, PAGE_SIZE, FALSE);
+                     &pdev->Res->num_cursor_pages, PAGE_SIZE, FALSE);
         }
     }
 
@@ -3111,7 +3099,7 @@ BOOL GetTransparentCursor(PDev *pdev, QXLCursorCmd *cmd)
     ASSERT(pdev, sizeof(Resource) + sizeof(InternalCursor) < PAGE_SIZE);
 
     res = (Resource *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(Resource) + sizeof(InternalCursor));
-    ONDBG(pdev->Res.num_cursor_pages++);
+    ONDBG(pdev->Res->num_cursor_pages++);
     res->refs = 1;
     res->free = FreeCursor;
 
@@ -3235,12 +3223,12 @@ void ResetAllDevices()
     EngAcquireSemaphore(res_sem);
 
     for (i = 0; i < num_global_res; i++) {
-        if (global_res[i].driver) {
+        if (global_res[i] && global_res[i]->driver) {
             DWORD length;
-            if (EngDeviceIoControl(global_res[i].driver, IOCTL_VIDEO_RESET_DEVICE,
+            if (EngDeviceIoControl(global_res[i]->driver, IOCTL_VIDEO_RESET_DEVICE,
                                    NULL, 0, NULL, 0, &length)) {
                 DEBUG_PRINT((NULL, 0, "%s: reset to device failed 0x%lx\n",
-                            __FUNCTION__, global_res[i].driver));
+                            __FUNCTION__, global_res[i]->driver));
                 
             }
         }

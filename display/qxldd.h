@@ -314,7 +314,7 @@ typedef struct PDev {
 
     UINT32 dev_id;
 
-    DevRes Res;
+    DevRes *Res;
 
     Ring update_trace;
     UpdateTrace update_trace_items[NUM_UPDATE_TRACE_ITEMS];
@@ -334,7 +334,6 @@ void DebugPrint(PDev *pdev, int level, const char *message, ...);
 void InitGlobalRes();
 void CleanGlobalRes();
 void InitResources(PDev *pdev);
-void SyncResources(PDev *pdev);
 
 #ifdef CALL_TEST
 void CountCall(PDev *pdev, int counter);

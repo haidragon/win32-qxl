@@ -11,7 +11,7 @@ static _inline UINT32 GetSurfaceIdFromInfo(SurfaceInfo *info)
   if (info == &pdev->surface0_info) {
     return 0;
   }
-  return info - pdev->Res.surfaces_info;
+  return info - pdev->Res->surfaces_info;
 }
 
 static _inline SurfaceInfo *GetSurfaceInfo(PDev *pdev, UINT32 id)
@@ -19,7 +19,7 @@ static _inline SurfaceInfo *GetSurfaceInfo(PDev *pdev, UINT32 id)
   if (id == 0) {
     return &pdev->surface0_info;
   }
-  return &pdev->Res.surfaces_info[id];
+  return &pdev->Res->surfaces_info[id];
 }
 
 static _inline UINT32 GetSurfaceId(SURFOBJ *surf)
@@ -37,10 +37,10 @@ static _inline void FreeSurface(PDev *pdev, UINT32 surface_id)
     if (surface_id == 0) {
         return;
     }
-    surface = &pdev->Res.surfaces_info[surface_id];
+    surface = &pdev->Res->surfaces_info[surface_id];
     surface->draw_area.base_mem = NULL; /* Mark as not used */
-    surface->u.next_free = pdev->Res.free_surfaces;
-    pdev->Res.free_surfaces = surface;
+    surface->u.next_free = pdev->Res->free_surfaces;
+    pdev->Res->free_surfaces = surface;
 }
 
 
@@ -49,14 +49,14 @@ static UINT32 GetFreeSurface(PDev *pdev)
     UINT32 x;
     SurfaceInfo *surface;
 
-    surface = pdev->Res.free_surfaces;
+    surface = pdev->Res->free_surfaces;
     if (surface == NULL) {
         return 0;
     }
 
-    pdev->Res.free_surfaces = surface->u.next_free;
+    pdev->Res->free_surfaces = surface->u.next_free;
 
-    return surface - pdev->Res.surfaces_info;
+    return surface - pdev->Res->surfaces_info;
 }
 
 enum {

@@ -892,7 +892,6 @@ VOID DisableQXLPrimarySurface(PDev *pdev)
 
     if (pdev->surf_enable) {
         DestroyPrimarySurface(pdev);
-        SyncResources(pdev);
         pdev->surf_enable = FALSE;
     }
 }
@@ -1279,20 +1278,20 @@ VOID APIENTRY DrvDeleteDeviceBitmap(DHSURF dhsurf)
 
 void CountCall(PDev *pdev, int counter)
 {
-    if (pdev->Res.count_calls) {
+    if (pdev->Res->count_calls) {
         int i;
 
-        pdev->Res.call_counters[counter]++;
-        if((++pdev->Res.total_calls % 500) == 0) {
-            DEBUG_PRINT((pdev, 0, "total eng calls is %u\n", pdev->Res.total_calls));
+        pdev->Res->call_counters[counter]++;
+        if((++pdev->Res->total_calls % 500) == 0) {
+            DEBUG_PRINT((pdev, 0, "total eng calls is %u\n", pdev->Res->total_calls));
             for (i = 0; i < NUM_CALL_COUNTERS; i++) {
                 DEBUG_PRINT((pdev, 0, "%s count is %u\n",
-                             counters_info[i].name, pdev->Res.call_counters[i]));
+                             counters_info[i].name, pdev->Res->call_counters[i]));
             }
         }
-        pdev->Res.count_calls = FALSE;
+        pdev->Res->count_calls = FALSE;
     } else if (counters_info[counter].effective) {
-        pdev->Res.count_calls = TRUE;
+        pdev->Res->count_calls = TRUE;
     }
 }
 
