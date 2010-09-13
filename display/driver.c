@@ -108,12 +108,12 @@ static CallCounterInfo counters_info[NUM_CALL_COUNTERS] = {
 void DebugPrintV(PDev *pdev, const char *message, va_list ap)
 {
     if (pdev && pdev->log_buf) {
-        EngAcquireSemaphore(pdev->print_sem);
+        EngAcquireSemaphore(pdev->Res->print_sem);
         _snprintf(pdev->log_buf, QXL_LOG_BUF_SIZE, QXLDD_DEBUG_PREFIX);
         _vsnprintf(pdev->log_buf + strlen(QXLDD_DEBUG_PREFIX),
                    QXL_LOG_BUF_SIZE - strlen(QXLDD_DEBUG_PREFIX), message, ap);
         WRITE_PORT_UCHAR(pdev->log_port, 0);
-        EngReleaseSemaphore(pdev->print_sem);
+        EngReleaseSemaphore(pdev->Res->print_sem);
     } else {
         EngDebugPrint(QXLDD_DEBUG_PREFIX, (PCHAR)message, ap);
     }
@@ -509,19 +509,9 @@ DHPDEV DrvEnablePDEV(DEVMODEW *dev_mode, PWSTR ignore1, ULONG ignore2, HSURF *ig
         goto err1;
     }
 
-    if (!(pdev->print_sem = EngCreateSemaphore())) {
-        DEBUG_PRINT((NULL, 0, "%s: create print sem failed\n", __FUNCTION__));
-        goto err2;
-    }
-
-    if (!(pdev->cmd_sem = EngCreateSemaphore())) {
-        DEBUG_PRINT((NULL, 0, "%s: create cmd sem failed\n", __FUNCTION__));
-        goto err3;
-    }
-
     if (!ResInit(pdev)) {
         DEBUG_PRINT((NULL, 0, "%s: init res failed\n", __FUNCTION__));
-        goto err4;
+        goto err2;
     }
 
     RtlCopyMemory(dev_caps, &gdi_info, dev_caps_size);
@@ -530,10 +520,6 @@ DHPDEV DrvEnablePDEV(DEVMODEW *dev_mode, PWSTR ignore1, ULONG ignore2, HSURF *ig
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     return(DHPDEV)pdev;
 
-err4:
-    EngDeleteSemaphore(pdev->cmd_sem);
-err3:
-    EngDeleteSemaphore(pdev->print_sem);
 err2:
     DestroyPalette(pdev);
 
@@ -550,8 +536,6 @@ VOID DrvDisablePDEV(DHPDEV in_pdev)
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     ResDestroy(pdev);
     DestroyPalette(pdev);
-    EngDeleteSemaphore(pdev->cmd_sem);
-    EngDeleteSemaphore(pdev->print_sem);
     EngFreeMem(pdev);
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
 }

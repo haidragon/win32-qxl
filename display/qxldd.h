@@ -183,6 +183,9 @@ typedef struct DevRes {
     UINT64 free_outputs;
     UINT32 update_id;
 
+    HSEMAPHORE print_sem;
+    HSEMAPHORE cmd_sem;
+
     CacheImage cache_image_pool[IMAGE_POOL_SIZE];
     Ring cache_image_lru;
     Ring cursors_lru;
@@ -262,9 +265,6 @@ typedef struct PDev {
     UINT32 log_port;
     UINT8 *log_buf;
     UINT32 *log_level;
-
-    HSEMAPHORE print_sem;
-    HSEMAPHORE cmd_sem;
 
     PMemSlot *mem_slots;
     UINT8 num_mem_slot;

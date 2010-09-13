@@ -78,12 +78,12 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable);
 
 #define PUSH_CMD(pdev) do {                             \
     int notify;                                         \
-    EngAcquireSemaphore(pdev->cmd_sem);                 \
+    EngAcquireSemaphore(pdev->Res->cmd_sem);            \
     SPICE_RING_PUSH(pdev->cmd_ring, notify);            \
     if (notify) {                                       \
         WRITE_PORT_UCHAR(pdev->notify_cmd_port, 0);     \
     }                                                   \
-    EngReleaseSemaphore(pdev->cmd_sem);                 \
+    EngReleaseSemaphore(pdev->Res->cmd_sem);            \
 } while (0);
 
 #define PUSH_CURSOR_CMD(pdev) do {                      \
@@ -391,6 +391,14 @@ void CleanGlobalRes()
                     EngDeleteSemaphore(res->malloc_sem);
                     res->malloc_sem = NULL;
                 }
+                if (res->cmd_sem) {
+                    EngDeleteSemaphore(res->cmd_sem);
+                    res->cmd_sem = NULL;
+                }
+                if (res->print_sem) {
+                    EngDeleteSemaphore(res->print_sem);
+                    res->print_sem = NULL;
+                }
                 EngFreeMem(res);
             }
         }
@@ -439,6 +447,14 @@ static void InitRes(PDev *pdev)
     pdev->Res->malloc_sem = EngCreateSemaphore();
     if (!pdev->Res->malloc_sem) {
         PANIC(pdev, "Res malloc sem creation failed\n");
+    }
+    pdev->Res->cmd_sem = EngCreateSemaphore();
+    if (!pdev->Res->cmd_sem) {
+        PANIC(pdev, "Res cmd sem creation failed\n");
+    }
+    pdev->Res->print_sem = EngCreateSemaphore();
+    if (!pdev->Res->print_sem) {
+        PANIC(pdev, "Res print sem creation failed\n");
     }
 
     InitMspace(pdev->Res, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
