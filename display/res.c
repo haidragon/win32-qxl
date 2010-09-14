@@ -1909,7 +1909,7 @@ static _inline UINT32 GetFormatLineSize(INT32 width, ULONG bitmap_format, UINT8 
     }
 }
 
-static BOOL ChachSizeTest(PDev *pdev, SURFOBJ *surf)
+static BOOL CacheSizeTest(PDev *pdev, SURFOBJ *surf)
 {
     BOOL ret = (UINT32)surf->sizlBitmap.cx * surf->sizlBitmap.cy <= pdev->max_bitmap_size;
     if (!ret) {
@@ -1982,7 +1982,7 @@ BOOL QXLCheckIfCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans)
     return FALSE;
 }
 
-static CacheImage *GetChachImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans, int high_bits_set, UINT32 *hash_key)
+static CacheImage *GetCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans, int high_bits_set, UINT32 *hash_key)
 {
     CacheImage *cache_image;
     UINT64 gdi_unique;
@@ -2019,7 +2019,7 @@ static CacheImage *GetChachImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_tran
         return cache_image;
     }
 
-    if (ChachSizeTest(pdev, surf)) {
+    if (CacheSizeTest(pdev, surf)) {
         CacheImage *cache_image = AllocCacheImage(pdev);
         ImageCacheRemove(pdev, cache_image);
         cache_image->key = key;
@@ -2147,7 +2147,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
                  surf->iBitmapFormat));
 
     if (use_cache) {
-        cache_image = GetChachImage(pdev, surf, color_trans, high_bits_set, hash_key);
+        cache_image = GetCacheImage(pdev, surf, color_trans, high_bits_set, hash_key);
         if (cache_image && cache_image->image) {
             DEBUG_PRINT((pdev, 11, "%s: cached image found %u\n", __FUNCTION__, cache_image->key));
             internal = cache_image->image;
@@ -2287,7 +2287,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
 
     ASSERT(pdev, surf->iBitmapFormat == BMF_32BPP && surf->iType == STYPE_BITMAP);
 
-    //todo: use GetChachImage
+    //todo: use GetCacheImage
 
     // NOTE: Same BMF_DONTCACHE issue as in QXLGetBitmap
     if (!surf->iUniq || (surf->fjBitmap & BMF_DONTCACHE)) {
@@ -2317,7 +2317,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
             DrawableAddRes(pdev, drawable, image_res);
             return TRUE;
         }
-    } else if (ChachSizeTest(pdev, surf)) {
+    } else if (CacheSizeTest(pdev, surf)) {
         CacheImage *cache_image = AllocCacheImage(pdev);
         ImageCacheRemove(pdev, cache_image);
         cache_image->key = key;
