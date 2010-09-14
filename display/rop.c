@@ -679,7 +679,7 @@ static BOOL DoCopy(PDev *pdev, UINT32 surface_id, RECTL *area, CLIPOBJ *clip, SU
     }
 
     if (use_cache && TestSplitClips(pdev, src, src_rect, clip, mask) &&
-        !CheckIfCacheImage(pdev, src, color_trans)) {
+        !QXLCheckIfCacheImage(pdev, src, color_trans)) {
         if (clip->iDComplexity == DC_RECT) {
             if (!DoPartialCopy(pdev, surface_id, src, src_rect, area, &clip->rclBounds, color_trans,
                                scale_mode, rop_descriptor)) {

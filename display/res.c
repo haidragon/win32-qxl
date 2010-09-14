@@ -1939,7 +1939,7 @@ static _inline UINT64 get_unique(SURFOBJ *surf, XLATEOBJ *color_trans)
     }
 }
 
-BOOL CheckIfCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans)
+BOOL QXLCheckIfCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans)
 {
     CacheImage *cache_image;
     UINT64 gdi_unique;
