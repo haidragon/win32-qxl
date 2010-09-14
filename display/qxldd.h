@@ -253,6 +253,7 @@ typedef struct PDev {
     UINT8 *surf_base;
 
     QuicData *quic_data;
+    HSEMAPHORE quic_data_sem;
 
     QXLCommandRing *cmd_ring;
     QXLCursorRing *cursor_ring;

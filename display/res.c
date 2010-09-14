@@ -1645,6 +1645,8 @@ static _inline Resource *GetQuicImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color
         return NULL;
     }
 
+    EngAcquireSemaphore(pdev->quic_data_sem);
+
     quic_data = pdev->quic_data;
 
     alloc_size = MIN(QUIC_ALLOC_BASE + (height * line_size >> 4), QUIC_ALLOC_BASE + QUIC_BUF_MAX);
@@ -1676,13 +1678,18 @@ static _inline Resource *GetQuicImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color
     if (data_size == QUIC_ERROR) {
         FreeQuicImage(pdev, image_res);
         DEBUG_PRINT((pdev, 13, "%s: error\n", __FUNCTION__));
-        return NULL;
+        image_res = NULL;
+        goto out;
     }
 
     quic_data->chunk->data_size = (data_size - quic_data->prev_chunks_io_words) << 2;
     internal->image.quic.data_size = data_size << 2;
     DEBUG_PRINT((pdev, 13, "%s: done. row size %u quic size %u \n", __FUNCTION__,
                  line_size * height, data_size << 2));
+
+ out:
+    EngReleaseSemaphore(pdev->quic_data_sem);
+
     return image_res;
 }
 
@@ -3211,6 +3218,8 @@ BOOL ResInit(PDev *pdev)
         return FALSE;
     }
     pdev->quic_data = usr_data;
+    pdev->quic_data_sem = EngCreateSemaphore();
+
     return TRUE;
 }
 
@@ -3218,6 +3227,7 @@ void ResDestroy(PDev *pdev)
 {
     QuicData *usr_data = pdev->quic_data;
     quic_destroy(usr_data->quic);
+    EngDeleteSemaphore(pdev->quic_data_sem);
     EngFreeMem(usr_data);
 }
 
