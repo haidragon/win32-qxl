@@ -407,6 +407,10 @@ void CleanGlobalRes()
                     EngDeleteSemaphore(res->surface_sem);
                     res->surface_sem = NULL;
                 }
+                if (res->image_cache_sem) {
+                    EngDeleteSemaphore(res->image_cache_sem);
+                    res->image_cache_sem = NULL;
+                }
                 EngFreeMem(res);
             }
         }
@@ -471,6 +475,10 @@ static void InitRes(PDev *pdev)
     pdev->Res->print_sem = EngCreateSemaphore();
     if (!pdev->Res->print_sem) {
         PANIC(pdev, "Res print sem creation failed\n");
+    }
+    pdev->Res->image_cache_sem = EngCreateSemaphore();
+    if (!pdev->Res->image_cache_sem) {
+        PANIC(pdev, "Res cache sem creation failed\n");
     }
 
     InitMspace(pdev->Res, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
@@ -1304,29 +1312,35 @@ typedef struct InternalImage {
 
 static void ImageKeyPut(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 key)
 {
-    ImageKey *image_key = &pdev->Res->image_key_lookup[IMAGE_KEY_HASH_VAL(hsurf)];
+    ImageKey *image_key;
 
     if (!unique) {
         return;
     }
+    EngAcquireSemaphore(pdev->Res->image_cache_sem);
+    image_key = &pdev->Res->image_key_lookup[IMAGE_KEY_HASH_VAL(hsurf)];
     image_key->hsurf = hsurf;
     image_key->unique = unique;
     image_key->key = key;
+    EngReleaseSemaphore(pdev->Res->image_cache_sem);
 }
 
 static BOOL ImageKeyGet(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 *key)
 {
     ImageKey *image_key;
+    BOOL res = FALSE;
 
     if (!unique) {
         return FALSE;
     }
+    EngAcquireSemaphore(pdev->Res->image_cache_sem);
     image_key = &pdev->Res->image_key_lookup[IMAGE_KEY_HASH_VAL(hsurf)];
     if (image_key->hsurf == hsurf && image_key->unique == unique) {
         *key = image_key->key;
-        return TRUE;
+        res = TRUE;
     }
-    return FALSE;
+    EngReleaseSemaphore(pdev->Res->image_cache_sem);
+    return res;
 }
 
 #define IMAGE_HASH_VAL(hsurf) (HSURF_HASH_VAL(hsurf) & IMAGE_HASH_MASK)
@@ -1334,26 +1348,35 @@ static BOOL ImageKeyGet(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 *key)
 static CacheImage *ImageCacheGetByKey(PDev *pdev, UINT32 key, BOOL check_rest,
                                       UINT8 format, UINT32 width, UINT32 height)
 {
-    CacheImage *cache_image = pdev->Res->image_cache[IMAGE_HASH_VAL(key)];
+    CacheImage *cache_image;
 
+    EngAcquireSemaphore(pdev->Res->image_cache_sem);
+    cache_image = pdev->Res->image_cache[IMAGE_HASH_VAL(key)];
     while (cache_image) {
         if (cache_image->key == key && (!check_rest || (cache_image->format == format &&
             cache_image->width == width && cache_image->height == height))) {
-            return cache_image;
+            break;
         }
         cache_image = cache_image->next;
     }
-    return NULL;
+    EngReleaseSemaphore(pdev->Res->image_cache_sem);
+    return cache_image;
 }
 
+/* Called with image_cache_sem held */
 static void ImageCacheAdd(PDev *pdev, CacheImage *cache_image)
 {
-    int key = IMAGE_HASH_VAL(cache_image->key);
+    int key;
+
+    EngAcquireSemaphore(pdev->Res->image_cache_sem);
+    key = IMAGE_HASH_VAL(cache_image->key);
     cache_image->next = pdev->Res->image_cache[key];
     cache_image->hits = 1;
     pdev->Res->image_cache[key] = cache_image;
+    EngReleaseSemaphore(pdev->Res->image_cache_sem);
 }
 
+/* Called with image_cache_sem held */
 static void ImageCacheRemove(PDev *pdev, CacheImage *cache_image)
 {
     CacheImage **cache_img;
@@ -1365,12 +1388,13 @@ static void ImageCacheRemove(PDev *pdev, CacheImage *cache_image)
     while (*cache_img) {
         if ((*cache_img)->key == cache_image->key) {
             *cache_img = cache_image->next;
-            return;
+            break;
         }
         cache_img = &(*cache_img)->next;
     }
 }
 
+/* Called with image_cache_sem held */
 static CacheImage *AllocCacheImage(PDev* pdev)
 {
     RingItem *item;
@@ -1539,8 +1563,10 @@ static void FreeQuicImage(PDev *pdev, Resource *res) // todo: defer
 
     internal = (InternalImage *)res->res;
     if (internal->cache) {
+        EngAcquireSemaphore(pdev->Res->image_cache_sem);
         RingAdd(pdev, &pdev->Res->cache_image_lru, &internal->cache->lru_link);
         internal->cache->image = NULL;
+        EngReleaseSemaphore(pdev->Res->image_cache_sem);
     }
 
     chunk_phys = ((QXLDataChunk *)internal->image.quic.data)->next_chunk;
@@ -1702,8 +1728,10 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
 
     internal = (InternalImage *)res->res;
     if (internal->cache) {
+        EngAcquireSemaphore(pdev->Res->image_cache_sem);
         RingAdd(pdev, &pdev->Res->cache_image_lru, &internal->cache->lru_link);
         internal->cache->image = NULL;
+        EngReleaseSemaphore(pdev->Res->image_cache_sem);
     }
 
     if (internal->image.bitmap.palette) {
@@ -2020,7 +2048,9 @@ static CacheImage *GetCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_tran
     }
 
     if (CacheSizeTest(pdev, surf)) {
-        CacheImage *cache_image = AllocCacheImage(pdev);
+        CacheImage *cache_image;
+        EngAcquireSemaphore(pdev->Res->image_cache_sem);
+        cache_image = AllocCacheImage(pdev);
         ImageCacheRemove(pdev, cache_image);
         cache_image->key = key;
         cache_image->image = NULL;
@@ -2029,6 +2059,7 @@ static CacheImage *GetCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_tran
         cache_image->height = surf->sizlBitmap.cy;
         ImageCacheAdd(pdev, cache_image);
         RingAdd(pdev, &pdev->Res->cache_image_lru, &cache_image->lru_link);
+        EngReleaseSemaphore(pdev->Res->image_cache_sem);
         DEBUG_PRINT((pdev, 11, "%s: ImageCacheAdd %u\n", __FUNCTION__, key));
     }
     return NULL;
@@ -2318,7 +2349,9 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
             return TRUE;
         }
     } else if (CacheSizeTest(pdev, surf)) {
-        CacheImage *cache_image = AllocCacheImage(pdev);
+        CacheImage *cache_image;
+        EngAcquireSemaphore(pdev->Res->image_cache_sem);
+        cache_image = AllocCacheImage(pdev);
         ImageCacheRemove(pdev, cache_image);
         cache_image->key = key;
         cache_image->image = NULL;
@@ -2327,6 +2360,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
         cache_image->height = surf->sizlBitmap.cy;
         ImageCacheAdd(pdev, cache_image);
         RingAdd(pdev, &pdev->Res->cache_image_lru, &cache_image->lru_link);
+        EngReleaseSemaphore(pdev->Res->image_cache_sem);
         DEBUG_PRINT((pdev, 11, "%s: ImageCacheAdd %u\n", __FUNCTION__, key));
     }
 
