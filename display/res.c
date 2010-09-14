@@ -411,6 +411,10 @@ void CleanGlobalRes()
                     EngDeleteSemaphore(res->image_cache_sem);
                     res->image_cache_sem = NULL;
                 }
+                if (res->cursor_cache_sem) {
+                    EngDeleteSemaphore(res->cursor_cache_sem);
+                    res->cursor_cache_sem = NULL;
+                }
                 EngFreeMem(res);
             }
         }
@@ -478,6 +482,10 @@ static void InitRes(PDev *pdev)
     }
     pdev->Res->image_cache_sem = EngCreateSemaphore();
     if (!pdev->Res->image_cache_sem) {
+        PANIC(pdev, "Res cache sem creation failed\n");
+    }
+    pdev->Res->cursor_cache_sem = EngCreateSemaphore();
+    if (!pdev->Res->cursor_cache_sem) {
         PANIC(pdev, "Res cache sem creation failed\n");
     }
 
@@ -2769,6 +2777,7 @@ typedef struct InternalCursor {
 
 #define CURSOR_HASH_VAL(hsurf) (HSURF_HASH_VAL(hsurf) & CURSOR_HASH_NASKE)
 
+/* Called with cursor_cache_sem held */
 static void CursorCacheRemove(PDev *pdev, InternalCursor *cursor)
 {
     InternalCursor **internal;
@@ -2785,7 +2794,7 @@ static void CursorCacheRemove(PDev *pdev, InternalCursor *cursor)
                 RingRemove(pdev, &cursor->lru_link);
                 RELEASE_RES(pdev, (Resource *)((UINT8 *)cursor - sizeof(Resource)));
                 pdev->Res->num_cursors--;
-                return;
+                break;
             }
             DEBUG_PRINT((pdev, 0, "%s: unexpected\n", __FUNCTION__));
         }
@@ -2804,6 +2813,7 @@ static void CursorCacheAdd(PDev *pdev, InternalCursor *cursor)
         return;
     }
 
+    EngAcquireSemaphore(pdev->Res->cursor_cache_sem);
     if (pdev->Res->num_cursors == CURSOR_CACHE_SIZE) {
         ASSERT(pdev, RingGetTail(pdev, &pdev->Res->cursors_lru));
         CursorCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->cursors_lru),
@@ -2817,6 +2827,7 @@ static void CursorCacheAdd(PDev *pdev, InternalCursor *cursor)
     RingAdd(pdev, &pdev->Res->cursors_lru, &cursor->lru_link);
     GET_RES((Resource *)((UINT8 *)cursor - sizeof(Resource)));
     pdev->Res->num_cursors++;
+    EngReleaseSemaphore(pdev->Res->cursor_cache_sem);
 }
 
 static InternalCursor *CursorCacheGet(PDev *pdev, HSURF hsurf, UINT32 unique)
@@ -2828,6 +2839,7 @@ static InternalCursor *CursorCacheGet(PDev *pdev, HSURF hsurf, UINT32 unique)
         return NULL;
     }
 
+    EngAcquireSemaphore(pdev->Res->cursor_cache_sem);
     internal = &pdev->Res->cursor_cache[CURSOR_HASH_VAL(hsurf)];
     while (*internal) {
         InternalCursor *now = *internal;
@@ -2835,6 +2847,7 @@ static InternalCursor *CursorCacheGet(PDev *pdev, HSURF hsurf, UINT32 unique)
             if (now->unique == unique) {
                 RingRemove(pdev, &now->lru_link);
                 RingAdd(pdev, &pdev->Res->cursors_lru, &now->lru_link);
+                EngReleaseSemaphore(pdev->Res->cursor_cache_sem);
                 return now;
             }
             CursorCacheRemove(pdev, now);
@@ -2842,6 +2855,7 @@ static InternalCursor *CursorCacheGet(PDev *pdev, HSURF hsurf, UINT32 unique)
         }
         internal = &now->next;
     }
+    EngReleaseSemaphore(pdev->Res->cursor_cache_sem);
     return NULL;
 }
 
@@ -2950,7 +2964,9 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
 
     cursor = info->cursor = &internal->cursor;
     cursor->header.type = type;
+    EngAcquireSemaphore(pdev->Res->cursor_cache_sem);
     cursor->header.unique = unique ? ++pdev->Res->last_cursor_id : 0;
+    EngReleaseSemaphore(pdev->Res->cursor_cache_sem);
     cursor->header.width = (UINT16)local_surf->sizlBitmap.cx;
     cursor->header.height = (type == SPICE_CURSOR_TYPE_MONO) ? (UINT16)local_surf->sizlBitmap.cy >> 1 :
                             (UINT16)local_surf->sizlBitmap.cy;
