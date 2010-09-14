@@ -189,6 +189,7 @@ typedef struct DevRes {
     HSEMAPHORE surface_sem; /* Protects surfaces allocation */
     HSEMAPHORE image_cache_sem; /* Protects image cache */
     HSEMAPHORE cursor_cache_sem; /* Protects cursor cache */
+    HSEMAPHORE palette_cache_sem; /* Protects palette cache */
 
     CacheImage cache_image_pool[IMAGE_POOL_SIZE];
     Ring cache_image_lru;

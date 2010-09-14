@@ -415,6 +415,10 @@ void CleanGlobalRes()
                     EngDeleteSemaphore(res->cursor_cache_sem);
                     res->cursor_cache_sem = NULL;
                 }
+                if (res->palette_cache_sem) {
+                    EngDeleteSemaphore(res->palette_cache_sem);
+                    res->palette_cache_sem = NULL;
+                }
                 EngFreeMem(res);
             }
         }
@@ -486,6 +490,10 @@ static void InitRes(PDev *pdev)
     }
     pdev->Res->cursor_cache_sem = EngCreateSemaphore();
     if (!pdev->Res->cursor_cache_sem) {
+        PANIC(pdev, "Res cache sem creation failed\n");
+    }
+    pdev->Res->palette_cache_sem = EngCreateSemaphore();
+    if (!pdev->Res->palette_cache_sem) {
         PANIC(pdev, "Res cache sem creation failed\n");
     }
 
@@ -1458,6 +1466,7 @@ static _inline void ReleasePalette(PDev *pdev, InternalPalette *palette)
     }
 }
 
+/* Called with palette_cache_sem held */
 static _inline void PaletteCacheRemove(PDev *pdev, InternalPalette *palette)
 {
     InternalPalette **internal;
@@ -1489,6 +1498,7 @@ static _inline InternalPalette *PaletteCacheGet(PDev *pdev, UINT32 unique)
     if (!unique) {
         return NULL;
     }
+    EngAcquireSemaphore(pdev->Res->palette_cache_sem);
 
     now = pdev->Res->palette_cache[PALETTE_HASH_VAL(unique)];
     while (now) {
@@ -1496,12 +1506,14 @@ static _inline InternalPalette *PaletteCacheGet(PDev *pdev, UINT32 unique)
             RingRemove(pdev, &now->lru_link);
             RingAdd(pdev, &pdev->Res->palette_lru, &now->lru_link);
             now->refs++;
+            EngReleaseSemaphore(pdev->Res->palette_cache_sem);
             DEBUG_PRINT((pdev, 13, "%s: found\n", __FUNCTION__));
             return now;
         }
         now = now->next;
     }
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
+    EngReleaseSemaphore(pdev->Res->palette_cache_sem);
     return NULL;
 }
 
@@ -1516,6 +1528,7 @@ static _inline void PaletteCacheAdd(PDev *pdev, InternalPalette *palette)
         return;
     }
 
+    EngAcquireSemaphore(pdev->Res->palette_cache_sem);
     if (pdev->Res->num_palettes == PALETTE_CACHE_SIZE) {
         ASSERT(pdev, RingGetTail(pdev, &pdev->Res->palette_lru));
         PaletteCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->palette_lru),
@@ -1529,6 +1542,7 @@ static _inline void PaletteCacheAdd(PDev *pdev, InternalPalette *palette)
     RingAdd(pdev, &pdev->Res->palette_lru, &palette->lru_link);
     palette->refs++;
     pdev->Res->num_palettes++;
+    EngReleaseSemaphore(pdev->Res->palette_cache_sem);
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
 
