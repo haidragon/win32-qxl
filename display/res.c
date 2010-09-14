@@ -1302,7 +1302,7 @@ typedef struct InternalImage {
 
 #define IMAGE_KEY_HASH_VAL(hsurf) (HSURF_HASH_VAL(hsurf) & IMAGE_KEY_HASH_MASK)
 
-void ImageKeyPut(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 key)
+static void ImageKeyPut(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 key)
 {
     ImageKey *image_key = &pdev->Res->image_key_lookup[IMAGE_KEY_HASH_VAL(hsurf)];
 
@@ -1314,7 +1314,7 @@ void ImageKeyPut(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 key)
     image_key->key = key;
 }
 
-BOOL ImageKeyGet(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 *key)
+static BOOL ImageKeyGet(PDev *pdev, HSURF hsurf, UINT64 unique, UINT32 *key)
 {
     ImageKey *image_key;
 
