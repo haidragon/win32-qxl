@@ -1,18 +1,22 @@
 /*
    Copyright (C) 2009 Red Hat, Inc.
 
-   This program is free software; you can redistribute it and/or
-   modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of
-   the License, or (at your option) any later version.
+   This software is licensed under the GNU General Public License,
+   version 2 (GPLv2) (see COPYING for details), subject to the
+   following clarification.
 
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
+   With respect to binaries built using the Microsoft(R) Windows
+   Driver Kit (WDK), GPLv2 does not extend to any code contained in or
+   derived from the WDK ("WDK Code").  As to WDK Code, by using or
+   distributing such binaries you agree to be bound by the Microsoft
+   Software License Terms for the WDK.  All WDK Code is considered by
+   the GPLv2 licensors to qualify for the special exception stated in
+   section 3 of GPLv2 (commonly known as the system library
+   exception).
 
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   There is NO WARRANTY for this software, express or implied,
+   including the implied warranties of NON-INFRINGEMENT, TITLE,
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 #ifndef _H_RES
