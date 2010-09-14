@@ -319,8 +319,6 @@ typedef struct PDev {
 
     UINT32 n_surfaces;
     SurfaceInfo surface0_info;
-
-    VIDEOMEMORY *pvmList;
 } PDev;
 
 
