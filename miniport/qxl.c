@@ -64,7 +64,7 @@ BOOLEAN Interrupt(PVOID  HwDeviceExtension);
 
 typedef struct QXLExtension {
     PVOID io_base;
-    ULONG io_port;
+    PUCHAR io_port;
 
     QXLRom *rom;
     ULONG rom_size;
@@ -152,7 +152,7 @@ VP_STATUS InitIO(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
     }
 
     dev->io_base = io_base;
-    dev->io_port = range->RangeStart.LowPart;
+    dev->io_port = (PUCHAR)range->RangeStart.LowPart;
 
     DEBUG_PRINT((0, "%s: OK, io 0x%x size %lu\n", __FUNCTION__,
                  (ULONG)range->RangeStart.LowPart, range->RangeLength));

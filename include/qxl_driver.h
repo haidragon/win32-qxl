@@ -51,9 +51,9 @@ typedef struct QXLDriverInfo {
     QXLCommandRing *cmd_ring;
     QXLCursorRing *cursor_ring;
     QXLReleaseRing *release_ring;
-    UINT32 notify_cmd_port;
-    UINT32 notify_cursor_port;
-    UINT32 notify_oom_port;
+    PUCHAR notify_cmd_port;
+    PUCHAR notify_cursor_port;
+    PUCHAR notify_oom_port;
     PEVENT display_event;
     PEVENT cursor_event;
     PEVENT sleep_event;
@@ -68,13 +68,13 @@ typedef struct QXLDriverInfo {
     UINT32 *update_id;
     UINT32 *compression_level;
 
-    UINT32 update_area_port;
+    PUCHAR update_area_port;
     QXLRect *update_area;
     UINT32 *update_surface;
 
     UINT32 *mm_clock;
 
-    UINT32 log_port;
+    PUCHAR log_port;
     UINT8 *log_buf;
     UINT32 *log_level;
 #if (WINVER < 0x0501)
@@ -89,12 +89,12 @@ typedef struct QXLDriverInfo {
     UINT64 *ram_slot_end;
     MemSlot main_mem_slot;
 
-    UINT32 destroy_surface_wait_port;
-    UINT32 create_primary_port;
-    UINT32 destroy_primary_port;
-    UINT32 memslot_add_port;
-    UINT32 memslot_del_port;
-    UINT32 destroy_all_surfaces_port;
+    PUCHAR destroy_surface_wait_port;
+    PUCHAR create_primary_port;
+    PUCHAR destroy_primary_port;
+    PUCHAR memslot_add_port;
+    PUCHAR memslot_del_port;
+    PUCHAR destroy_all_surfaces_port;
 
     UINT32 dev_id;
 

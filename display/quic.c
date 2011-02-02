@@ -1137,7 +1137,7 @@ static int encoder_reste(Encoder *encoder, uint32_t *io_ptr, uint32_t *io_ptr_en
     encoder_init_rle(&encoder->rgb_state);
 #endif
 
-    encoder->io_words_count = io_ptr_end - io_ptr;
+    encoder->io_words_count = (uint32_t)(io_ptr_end - io_ptr);
     encoder->io_now = io_ptr;
     encoder->io_end = io_ptr_end;
     encoder->rows_completed = 0;
@@ -1409,7 +1409,7 @@ int quic_encode(QuicContext *quic, QuicImageType type, int width, int height,
     }
 
     flush(encoder);
-    encoder->io_words_count -= (encoder->io_end - encoder->io_now);
+    encoder->io_words_count -= (uint32_t)(encoder->io_end - encoder->io_now);
 
     return encoder->io_words_count;
 }

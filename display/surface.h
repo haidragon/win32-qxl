@@ -11,7 +11,7 @@ static _inline UINT32 GetSurfaceIdFromInfo(SurfaceInfo *info)
   if (info == &pdev->surface0_info) {
     return 0;
   }
-  return info - pdev->Res->surfaces_info;
+  return (UINT32)(info - pdev->Res->surfaces_info);
 }
 
 static _inline SurfaceInfo *GetSurfaceInfo(PDev *pdev, UINT32 id)
@@ -62,7 +62,7 @@ static UINT32 GetFreeSurface(PDev *pdev)
     } else {
       pdev->Res->free_surfaces = surface->u.next_free;
 
-      id = surface - pdev->Res->surfaces_info;
+      id = (UINT32)(surface - pdev->Res->surfaces_info);
     }
 
     EngReleaseSemaphore(pdev->Res->surface_sem);

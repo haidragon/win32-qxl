@@ -5,24 +5,43 @@
 Signature = "$CHICAGO$"
 DriverVer = 09/29/2010,1.4.1.0 
 Provider = %RHAT%
+CatalogFile = qxl.cat
 Class = Display
 ClassGUID = {4d36e968-e325-11ce-bfc1-08002be10318}
 
 [DestinationDirs]
 DefaultDestDir = 11	; system32
-qxl.Miniport = 12		; drivers
-qxl.Display = 11		; system32
+qxl.Miniport = 12	; drivers
+qxl.Display = 11	; system32
 
 [Manufacturer]
-%RHAT% = q.Mfg
+%RHAT% = q, NTx86, NTamd64, NTx86.6.0, NTamd64.6.0
 
-[q.Mfg]
+; WinXP x86 and up
+[q.NTx86]
 %RHAT% %QXL% = qxl, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4&REV_02
+
+; WinXP x64 and up
+[q.NTamd64]
+%RHAT% %QXL% = qxl, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4&REV_02
+
+; Vista x86 and up
+[q.NTx86.6.0]
+%RHAT% %QXL% = qxl_vista, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4&REV_02
+
+; Vista x64 and up
+[q.NTamd64.6.0]
+%RHAT% %QXL% = qxl_vista, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4&REV_02
+
 
 [ControlFlags]
 ExcludeFromSelect = *
 
 [qxl]
+CopyFiles = qxl.Miniport, qxl.Display
+
+[qxl_vista]
+FeatureScore = FC
 CopyFiles = qxl.Miniport, qxl.Display
 
 [qxl.Miniport]
@@ -41,6 +60,9 @@ qxldd.dll = 1
 [qxl.SoftwareSettings]
 AddReg = qxl_SoftwareDeviceSettings
 
+[qxl_vista.SoftwareSettings]
+AddReg = qxl_SoftwareDeviceSettings
+
 [qxl_SoftwareDeviceSettings]
 HKR,, InstalledDisplayDrivers,        %REG_MULTI_SZ%, qxldd
 HKR,, VgaCompatible,                  %REG_DWORD%,    0
@@ -50,7 +72,10 @@ HKR,, DefaultSettings.YResolution,    %REG_DWORD%,    600
 HKR,, Acceleration.Level,             %REG_DWORD%,    0
 
 [qxl.Services]
-AddService = qxl, 0x00000002, qxl_Service_Inst	; Assign the named service as the PnP function driver
+AddService = qxl, 0x00000002, qxl_Service_Inst ; Assign the named service as the PnP function driver
+
+[qxl_vista.Services]
+AddService = qxl, 0x00000002, qxl_Service_Inst ; Assign the named service as the PnP function driver
 
 [qxl_Service_Inst]
 ServiceType    = 1                  ; SERVICE_KERNEL_DRIVER

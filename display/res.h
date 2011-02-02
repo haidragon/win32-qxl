@@ -66,7 +66,9 @@ BOOL ResInit(PDev *pdev);
 void ResDestroy(PDev *pdev);
 void ResInitGlobals();
 void ResDestroyGlobals();
+#ifndef _WIN64
 void CheckAndSetSSE2();
+#endif
 void ResetAllDevices();
 
 #endif

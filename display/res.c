@@ -19,7 +19,6 @@
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-#include <ddrawi.h>
 #include <ddraw.h>
 #include <dxmini.h>
 #include "os_dep.h"
@@ -856,7 +855,7 @@ static void __GetPathCommon(PDev *pdev, PATHOBJ *path, QXLDataChunk **chunk_ptr,
                 NEW_DATA_CHUNK(page_counter, alloc_size);
             }
 
-            cp_size = MIN(end - now, pt_buf_size);
+            cp_size = (int)MIN(end - now, pt_buf_size);
             memcpy(now, pt_buf, cp_size);
             chunk->data_size += cp_size;
             *data_size += cp_size;
@@ -1039,6 +1038,8 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
     DEBUG_PRINT((pdev, 10, "%s: done\n", __FUNCTION__));
     return TRUE;
 }
+
+#ifndef _WIN64
 
 static _inline void fast_memcpy_aligment(void *dest, const void *src, size_t len)
 {
@@ -1242,6 +1243,8 @@ static _inline void fast_memcpy_unaligment(void *dest, const void *src, size_t l
     }
 }
 
+#endif
+
 #ifdef DBG
     #define PutBytesAlign __PutBytesAlign
 #define PutBytes(pdev, chunk, now, end, src, size, page_counter, alloc_size, use_sse)\
@@ -1266,17 +1269,17 @@ static void __PutBytesAlign(PDev *pdev, QXLDataChunk **chunk_ptr, UINT8 **now_pt
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     while (size) {
-        int cp_size = MIN(end - now, size);
+        int cp_size = (int)MIN(end - now, size);
         if (!cp_size) {
             size_t aligned_size;
             ASSERT(pdev, alloc_size > 0);
             ASSERT(pdev, BITS_BUF_MAX > alignment);
-            aligned_size = MIN(alloc_size + alignment - 1, BITS_BUF_MAX);
+            aligned_size = (int)MIN(alloc_size + alignment - 1, BITS_BUF_MAX);
             aligned_size -=  aligned_size % alignment;
             NEW_DATA_CHUNK(page_counter, aligned_size);
-            cp_size = MIN(end - now, size);
+            cp_size = (int)MIN(end - now, size);
         }
-
+#ifndef _WIN64
         if (use_sse) {
             offset = (size_t)now & SSE_MASK;
             if (offset) {
@@ -1305,6 +1308,9 @@ static void __PutBytesAlign(PDev *pdev, QXLDataChunk **chunk_ptr, UINT8 **now_pt
         } else {
             RtlCopyMemory(now, src, cp_size);
         }
+#else
+        RtlCopyMemory(now, src, cp_size);
+#endif
         src += cp_size;
         now += cp_size;
         chunk->data_size += cp_size;
@@ -1716,7 +1722,7 @@ static _inline Resource *GetQuicImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color
     quic_data->chunk->prev_chunk = 0;
     quic_data->chunk->next_chunk = 0;
     quic_data->prev_chunks_io_words = 0;
-    quic_data->chunk_io_words = ((UINT8 *)image_res + alloc_size - quic_data->chunk->data) >> 2;
+    quic_data->chunk_io_words = (int)(((UINT8 *)image_res + alloc_size - quic_data->chunk->data) >> 2);
     quic_data->rows = height;
     quic_data->raw_row_size = line_size;
 
@@ -1776,6 +1782,8 @@ static void FreeBitmapImage(PDev *pdev, Resource *res) // todo: defer
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
 }
 
+#ifndef _WIN64
+
 static _inline void RestoreFPU(PDev *pdev, UINT8 FPUSave[])
 {
     void *align_addr =  (void *)ALIGN((size_t)(FPUSave), SSE_ALIGN);
@@ -1806,6 +1814,8 @@ static _inline void SaveFPU(PDev *pdev, UINT8 FPUSave[])
     }
 }
 
+#endif
+
 static void FreeSurfaceImage(PDev *pdev, Resource *res)
 {
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
@@ -1828,6 +1838,8 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     UINT8 *src_end;
     UINT8 *dest;
     UINT8 *dest_end;
+    UINT8 FPUSave[16 * 4 + 15];
+    BOOL use_sse = FALSE;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     ASSERT(pdev, width > 0 && height > 0);
@@ -1860,23 +1872,21 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     dest_end = (UINT8 *)image_res + alloc_size;
     alloc_size = height * line_size;
 
+#ifndef _WIN64
     if (have_sse2 && alloc_size >= 1024) {
-        UINT8 FPUSave[16 * 4 + 15];
-
+        use_sse = TRUE;
         SaveFPU(pdev, FPUSave);
-
-	for (; src != src_end; src -= surf->lDelta, alloc_size -= line_size) {
-	  PutBytesAlign(pdev, &chunk, &dest, &dest_end, src, line_size,
-			&pdev->Res->num_bits_pages, alloc_size, line_size, TRUE);
-	}
-
-        RestoreFPU(pdev, FPUSave);
-    } else {
-        for (; src != src_end; src -= surf->lDelta, alloc_size -= line_size) {
-            PutBytesAlign(pdev, &chunk, &dest, &dest_end, src, line_size,
-                          &pdev->Res->num_bits_pages, alloc_size, line_size, FALSE);
-        }
     }
+#endif
+    for (; src != src_end; src -= surf->lDelta, alloc_size -= line_size) {
+        PutBytesAlign(pdev, &chunk, &dest, &dest_end, src, line_size,
+                      &pdev->Res->num_bits_pages, alloc_size, line_size, use_sse);
+    }
+#ifndef _WIN64
+    if (use_sse) {
+        RestoreFPU(pdev, FPUSave);
+    }
+#endif
 
     GetPallette(pdev, &internal->image.bitmap, color_trans);
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
@@ -3310,6 +3320,8 @@ void ResDestroyGlobals()
     image_id_sem = NULL;
 }
 
+#ifndef _WIN64
+
 void CheckAndSetSSE2()
 {
     _asm
@@ -3324,6 +3336,8 @@ void CheckAndSetSSE2()
         have_sse2 = TRUE;
     }
 }
+
+#endif
 
 void ResetAllDevices()
 {

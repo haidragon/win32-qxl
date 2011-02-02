@@ -27,7 +27,7 @@
 #define ALIGN(a, b) (((a) + ((b) - 1)) & ~((b) - 1))
 
 
-#define OFFSETOF(type, member) ((unsigned)&((type *)0)->member)
+#define OFFSETOF(type, member) ((UINT64)&((type *)0)->member)
 #define CONTAINEROF(ptr, type, member) \
     ((type *) ((UINT8 *)(ptr) - OFFSETOF(type, member)))
 
