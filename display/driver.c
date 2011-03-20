@@ -298,9 +298,7 @@ DWORD GetAvailableModes(HANDLE driver, PVIDEO_MODE_INFORMATION *mode_info,
     n = modes.NumModes;
     while ( n-- ) {
         if ( (info->NumberOfPlanes != 1 ) ||!(info->AttributeFlags & VIDEO_MODE_GRAPHICS)
-             ||((info->BitsPerPlane != 16) && (info->BitsPerPlane != 32))
-             || (info->VisScreenWidth > 2000) || (info->VisScreenWidth < 480)
-             || (info->VisScreenHeight > 2000) || (info->VisScreenHeight < 480) ) {
+             ||((info->BitsPerPlane != 16) && (info->BitsPerPlane != 32))) {
 
             DEBUG_PRINT((NULL, 1, "%s: unsuported mode rejecting miniport mode\n",  __FUNCTION__));
             DEBUG_PRINT((NULL, 1, "                   width = %li height = %li\n",
