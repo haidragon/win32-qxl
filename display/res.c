@@ -174,22 +174,13 @@ static void WaitForCursorRing(PDev* pdev)
         {
             LARGE_INTEGER timeout; // 1 => 100 nanoseconds
             timeout.QuadPart = -1 * (1000 * 1000 * 10); //negative  => relative // 1s
-#if (WINVER < 0x0501)
-            pdev->WaitForEvent(pdev->cursor_event, &timeout);
-#else
-            EngWaitForSingleObject(pdev->cursor_event, &timeout);
-#endif // (WINVER < 0x0501)
-
+            WAIT_FOR_EVENT(pdev, pdev->cursor_event, &timeout);
             if (SPICE_RING_IS_FULL(pdev->cursor_ring)) {
                 DEBUG_PRINT((pdev, 0, "%s: 0x%lx: timeout\n", __FUNCTION__, pdev));
             }
         }
 #else
-#if (WINVER < 0x0501)
-        pdev->WaitForEvent(pdev->cursor_event, NULL);
-#else
-        EngWaitForSingleObject(pdev->cursor_event, NULL);
-#endif // (WINVER < 0x0501)
+        WAIT_FOR_EVENT(pdev, pdev->cursor_event, NULL);
 #endif //DBG
     }
 }
@@ -211,22 +202,13 @@ static void WaitForCmdRing(PDev* pdev)
         {
             LARGE_INTEGER timeout; // 1 => 100 nanoseconds
             timeout.QuadPart = -1 * (1000 * 1000 * 10); //negative  => relative // 1s
-#if (WINVER < 0x0501)
-            pdev->WaitForEvent(pdev->display_event, &timeout);
-#else
-            EngWaitForSingleObject(pdev->display_event, &timeout);
-#endif // (WINVER < 0x0501)
-
+            WAIT_FOR_EVENT(pdev, pdev->display_event, &timeout);
             if (SPICE_RING_IS_FULL(pdev->cmd_ring)) {
                 DEBUG_PRINT((pdev, 0, "%s: 0x%lx: timeout\n", __FUNCTION__, pdev));
             }
         }
 #else
-#if (WINVER < 0x0501)
-        pdev->WaitForEvent(pdev->display_event, NULL);
-#else
-        EngWaitForSingleObject(pdev->display_event, NULL);
-#endif // (WINVER < 0x0501)
+        WAIT_FOR_EVENT(pdev, pdev->display_event, NULL);
 #endif //DBG
     }
 }
@@ -2530,21 +2512,13 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
         {
             LARGE_INTEGER timeout; // 1 => 100 nanoseconds
             timeout.QuadPart = -1 * (1000 * 1000 * 10); //negative  => relative // 1s
-#if (WINVER < 0x0501)
-            pdev->WaitForEvent(pdev->display_event, &timeout);
-#else
-            EngWaitForSingleObject(pdev->display_event, &timeout);
-#endif //(WINVER < 0x0501)
+            WAIT_FOR_EVENT(pdev, pdev->display_event, &timeout);
             if (*pdev->dev_update_id != pdev->Res->update_id) {
                 DEBUG_PRINT((pdev, 0, "%s: 0x%lx: timeout\n", __FUNCTION__, pdev));
             }
         }
 #else
-#if (WINVER < 0x0501)
-        pdev->WaitForEvent(pdev->display_event, NULL);
-#else
-        EngWaitForSingleObject(pdev->display_event, NULL);
-#endif //(WINVER < 0x0501)
+        WAIT_FOR_EVENT(pdev, pdev->display_event, NULL);
 #endif // DEBUG
         mb();
     } while (*pdev->dev_update_id != pdev->Res->update_id);

@@ -1377,4 +1377,3 @@ BOOL APIENTRY DrvStrokeAndFillPath(
 }
 
 #endif
-
