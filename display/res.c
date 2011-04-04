@@ -2778,7 +2778,10 @@ static void CursorCacheRemove(PDev *pdev, InternalCursor *cursor)
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
-    ASSERT(pdev, cursor->unique);
+    if (!cursor->unique) {
+        DEBUG_PRINT((pdev, 1, "%s: cursor not unique\n", __FUNCTION__));
+        return;
+    }
     internal = &pdev->Res->cursor_cache[CURSOR_HASH_VAL(cursor->hsurf)];
 
     while (*internal) {
@@ -2794,7 +2797,7 @@ static void CursorCacheRemove(PDev *pdev, InternalCursor *cursor)
         }
         internal = &(*internal)->next;
     }
-    ASSERT(pdev, FALSE);
+    DEBUG_PRINT((pdev, 0, "%s: Error: should not reach this\n", __FUNCTION__));
 }
 
 static void CursorCacheAdd(PDev *pdev, InternalCursor *cursor)
