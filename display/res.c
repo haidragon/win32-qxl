@@ -1984,15 +1984,11 @@ static BOOL CacheSizeTest(PDev *pdev, SURFOBJ *surf)
 
 static _inline UINT64 get_unique(SURFOBJ *surf, XLATEOBJ *color_trans)
 {
-    int pallette;
-    ULONG pallette_unique;
-
-    pallette = color_trans && (color_trans->flXlate & XO_TABLE);
-    pallette_unique = pallette ? color_trans->iUniq : 0;
+    ULONG pallette_unique = color_trans ? color_trans->iUniq : 0;
 
     // NOTE: GDI sometimes gives many instances of the exactly same SURFOBJ (hsurf & iUniq),
     // but with (fjBitmap & BMF_DONTCACHE). This opposed to what documented in the MSDN.
-    if (!surf->iUniq || (surf->fjBitmap & BMF_DONTCACHE) || (pallette && !pallette_unique)) {
+    if (!surf->iUniq || (surf->fjBitmap & BMF_DONTCACHE) || !pallette_unique) {
         return 0;
     } else {
         return (surf->iUniq | ((UINT64)pallette_unique << 32));
