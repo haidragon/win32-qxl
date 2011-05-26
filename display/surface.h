@@ -76,10 +76,6 @@ enum {
     DEVICE_BITMAP_ALLOCATION_TYPE_VRAM,
 };
 
-BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, ULONG format, UINT32 cx, UINT32 cy, UINT32 stride,
-                    UINT32 surface_id);
-VOID FreeDrawArea(DrawArea *drawarea);
-
 HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *phys_mem,
                            UINT8 **base_mem, UINT32 surface_id, UINT8 allocation_type);
 VOID DeleteDeviceBitmap(PDev *pdev, UINT32 surface_id, UINT8 allocation_type);

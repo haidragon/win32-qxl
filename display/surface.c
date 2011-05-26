@@ -40,8 +40,8 @@
 #include "res.h"
 #include "surface.h"
 
-BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, ULONG format, UINT32 cx, UINT32 cy, UINT32 stride,
-                    UINT32 surface_id)
+static BOOL CreateDrawArea(PDev *pdev, UINT8 *base_mem, ULONG format, UINT32 cx, UINT32 cy,
+                           UINT32 stride, UINT32 surface_id)
 {
     SIZEL  size;
     DrawArea *drawarea;
@@ -74,7 +74,7 @@ error:
     return FALSE;
 }
 
-VOID FreeDrawArea(DrawArea *drawarea)
+static VOID FreeDrawArea(DrawArea *drawarea)
 {
     if (drawarea->surf_obj) {
         EngUnlockSurface(drawarea->surf_obj);

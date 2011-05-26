@@ -50,7 +50,7 @@ static DRVFN drv_calls[] = {
     {INDEX_DrvDisablePDEV, (PFN)DrvDisablePDEV},
     {INDEX_DrvCompletePDEV, (PFN)DrvCompletePDEV},
     {INDEX_DrvEnableSurface, (PFN)DrvEnableSurface},
-    {INDEX_DrvDisableSurface, (PFN) DrvDisableSurface},
+    {INDEX_DrvDisableSurface, (PFN)DrvDisableSurface},
     {INDEX_DrvAssertMode, (PFN)DrvAssertMode},
     {INDEX_DrvGetModes, (PFN)DrvGetModes},
     {INDEX_DrvSynchronize, (PFN)DrvSynchronize},
@@ -219,7 +219,7 @@ DEVINFO dev_default = {
     GCAPS2_ALPHACURSOR,
 };
 
-BOOL PrepareHardware(PDev *pdev);
+static BOOL PrepareHardware(PDev *pdev);
 
 static void mspace_print(void *user_data, char *format, ...)
 {
@@ -663,7 +663,7 @@ static BOOLEAN CreateVRamSlot(PDev *pdev)
 }
 
 
-BOOL PrepareHardware(PDev *pdev)
+static BOOL PrepareHardware(PDev *pdev)
 {
     VIDEO_MEMORY video_mem;
     VIDEO_MEMORY_INFORMATION video_mem_Info;

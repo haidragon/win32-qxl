@@ -560,10 +560,10 @@ void InitResources(PDev *pdev)
 
     if (global_res[id] == NULL) {
         global_res[id] = EngAllocMem(FL_ZERO_MEMORY, sizeof(DevRes), ALLOC_TAG);
-	pdev->Res = global_res[id];
+        pdev->Res = global_res[id];
         InitRes(pdev);
     } else {
-	pdev->Res = global_res[id];
+        pdev->Res = global_res[id];
     }
     EngReleaseSemaphore(res_sem);
 }
@@ -1410,14 +1410,14 @@ static CacheImage *AllocCacheImage(PDev* pdev)
 {
     RingItem *item;
     while (!(item = RingGetTail(pdev, &pdev->Res->cache_image_lru))) {
-	/* malloc_sem protects release_ring too */
+        /* malloc_sem protects release_ring too */
         EngAcquireSemaphore(pdev->Res->malloc_sem);
         if (pdev->Res->free_outputs == 0 &&
             SPICE_RING_IS_EMPTY(pdev->release_ring)) {
             WaitForReleaseRing(pdev);
         }
         FlushReleaseRing(pdev);
-	EngReleaseSemaphore(pdev->Res->malloc_sem);
+        EngReleaseSemaphore(pdev->Res->malloc_sem);
     }
     RingRemove(pdev, item);
     return CONTAINEROF(item, CacheImage, lru_link);

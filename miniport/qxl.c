@@ -204,7 +204,7 @@ VP_STATUS InitRom(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
                  __FUNCTION__, (ULONG)range->RangeStart.QuadPart, range->RangeLength));
     return NO_ERROR;
 
-    err:
+err:
     VideoPortUnmapMemory(dev, rom, NULL);
     DEBUG_PRINT((0, "%s ERR\n", __FUNCTION__));
     return error;
@@ -1005,7 +1005,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
     packet->StatusBlock->Status = NO_ERROR;
     DEBUG_PRINT((0, "%s: OK\n", __FUNCTION__));
     return TRUE;
-    err:
+err:
     packet->StatusBlock->Information = 0;
     packet->StatusBlock->Status = error;
     DEBUG_PRINT((0, "%s: ERR\n", __FUNCTION__));
