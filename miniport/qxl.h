@@ -35,8 +35,7 @@ enum {
 #define PAGE_SIZE (1 << PAGE_SHIFT)
 
 #if DBG
-#define DEBUG_PRINT(arg) VideoDebugPrint(arg)
+#define DEBUG_PRINT(arg) DebugPrint arg
 #else
 #define DEBUG_PRINT(arg)
 #endif
-

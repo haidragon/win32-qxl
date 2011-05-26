@@ -24,6 +24,7 @@
 #if (WINVER < 0x0501)
 #include "wdmhelper.h"
 #endif
+#include "minimal_snprintf.h"
 
 VP_STATUS FindAdapter(PVOID dev_extension,
                       PVOID reserved,
@@ -90,10 +91,48 @@ typedef struct QXLExtension {
 
     MemSlot *mem_slots;
 
+    char *log_buf;
+    PUCHAR log_port;
 } QXLExtension;
 
 #define QXL_ALLOC_TAG '_lxq'
 
+#define DBG_LEVEL 10
+
+#define QXL_MINIPORT_DEBUG_PREFIX "qxlmp: "
+
+void DebugPrintV(char *log_buf, PUCHAR log_port, const char *message, const char *func, va_list ap)
+{
+    int n, n_strlen;
+
+    if (log_buf && log_port) {
+        /*
+         * TODO: use a shared semaphore with display code.
+         * In practice this is not a problem, since miniport runs either on ioctls (sync)
+         * or before display is brought up or when it is brought down.
+         * Also the worst that can happen is overwriting a message (not seen in practice).
+         */
+        snprintf(log_buf, QXL_LOG_BUF_SIZE, QXL_MINIPORT_DEBUG_PREFIX);
+        vsnprintf(log_buf + strlen(QXL_MINIPORT_DEBUG_PREFIX),
+                   QXL_LOG_BUF_SIZE - strlen(QXL_MINIPORT_DEBUG_PREFIX),
+                   message, ap);
+        VideoPortWritePortUchar(log_port, 0);
+    } else {
+        VideoDebugPrint((0, (PCHAR)message, ap));
+    }
+}
+
+void DebugPrint(QXLExtension *dev, UINT32 level, const char *message, const char *func, ...)
+{
+    va_list ap;
+
+    if (dev && dev->rom && level > dev->rom->log_level) {
+        return;
+    }
+    va_start(ap, message);
+    DebugPrintV(dev ? dev->log_buf : NULL, dev ? dev->log_port : 0, message, func, ap);
+    va_end(ap);
+}
 
 ULONG DriverEntry(PVOID context1, PVOID context2)
 {
@@ -156,8 +195,8 @@ VP_STATUS InitIO(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
 
     dev->io_base = io_base;
     dev->io_port = (PUCHAR)range->RangeStart.LowPart;
-
-    DEBUG_PRINT((0, "%s: OK, io 0x%x size %lu\n", __FUNCTION__,
+    dev->log_port = dev->io_port + QXL_IO_LOG;
+    DEBUG_PRINT((dev, 0, "%s: OK, io 0x%x size %lu\n", __FUNCTION__,
                  (ULONG)range->RangeStart.LowPart, range->RangeLength));
 
     return NO_ERROR;
@@ -262,7 +301,8 @@ VP_STATUS InitRam(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
     dev->ram_start = ram;
     dev->ram_header = ram_header;
     dev->ram_size = range->RangeLength;
-    DEBUG_PRINT((0, "%s OK: ram 0x%lx size %lu\n",
+    dev->log_buf = dev->ram_header->log_buf;
+    DEBUG_PRINT((dev, 0, "%s OK: ram 0x%lx size %lu\n",
                  __FUNCTION__, (ULONG)range->RangeStart.QuadPart, range->RangeLength));
     return NO_ERROR;
 
