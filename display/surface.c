@@ -105,8 +105,8 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
     };
 
     if (!(surf = EngCreateDeviceBitmap((DHSURF)GetSurfaceInfo(pdev, surface_id), size, format))) {
-        DEBUG_PRINT((NULL, 0, "%s: create device surface failed, 0x%lx\n",
-                     __FUNCTION__, pdev));
+        DEBUG_PRINT((pdev, 0, "%s: EngCreateDeviceBitmap failed, pdev 0x%lx, surface_id=%d\n",
+                    __FUNCTION__, pdev, surface_id));
         goto out_error1;
     }
 

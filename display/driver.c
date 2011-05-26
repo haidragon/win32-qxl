@@ -532,7 +532,7 @@ VOID DrvDisablePDEV(DHPDEV in_pdev)
 {
     PDev* pdev = (PDev*)in_pdev;
 
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     ResDestroy(pdev);
     DestroyPalette(pdev);
     EngFreeMem(pdev);
@@ -670,21 +670,21 @@ static BOOL PrepareHardware(PDev *pdev)
     QXLDriverInfo dev_info;
     QXLPHYSICAL high_bits;
 
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
     if (!SetHardwareMode(pdev)) {
-        DEBUG_PRINT((NULL, 0, "%s: set mode failed, 0x%lx\n", __FUNCTION__, pdev));
+        DEBUG_PRINT((pdev, 0, "%s: set mode failed, 0x%lx\n", __FUNCTION__, pdev));
         return FALSE;
     }
 
     if (EngDeviceIoControl( pdev->driver, IOCTL_QXL_GET_INFO, NULL,
                             0, &dev_info, sizeof(QXLDriverInfo), &length) ) {
-        DEBUG_PRINT((NULL, 0, "%s: get qxl info failed, 0x%lx\n", __FUNCTION__, pdev));
+        DEBUG_PRINT((pdev, 0, "%s: get qxl info failed, 0x%lx\n", __FUNCTION__, pdev));
         return FALSE;
     }
 
     if (dev_info.version != QXL_DRIVER_INFO_VERSION) {
-        DEBUG_PRINT((NULL, 0, "%s: get qxl info mismatch, 0x%lx\n", __FUNCTION__, pdev));
+        DEBUG_PRINT((pdev, 0, "%s: get qxl info mismatch, 0x%lx\n", __FUNCTION__, pdev));
         return FALSE;
     }
 
@@ -741,7 +741,7 @@ static BOOL PrepareHardware(PDev *pdev)
     pdev->mem_slots = EngAllocMem(FL_ZERO_MEMORY, sizeof(PMemSlot) * dev_info.num_mem_slot,
                                   ALLOC_TAG);
     if (!pdev->mem_slots) {
-        DEBUG_PRINT((NULL, 0, "%s: mem slots alloc failed, 0x%lx\n", __FUNCTION__, pdev));
+        DEBUG_PRINT((pdev, 0, "%s: mem slots alloc failed, 0x%lx\n", __FUNCTION__, pdev));
         return FALSE;
     }
 
@@ -760,10 +760,10 @@ static BOOL PrepareHardware(PDev *pdev)
     if (EngDeviceIoControl( pdev->driver, IOCTL_VIDEO_MAP_VIDEO_MEMORY, &video_mem,
                             sizeof(VIDEO_MEMORY), &video_mem_Info,
                             sizeof(video_mem_Info), &length) ) {
-        DEBUG_PRINT((NULL, 0, "%s: mapping failed, 0x%lx\n", __FUNCTION__, pdev));
+        DEBUG_PRINT((pdev, 0, "%s: mapping failed, 0x%lx\n", __FUNCTION__, pdev));
         return FALSE;
     }
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx vals 0x%lx %ul\n", __FUNCTION__, pdev,
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx vals 0x%lx %ul\n", __FUNCTION__, pdev,
                  video_mem_Info.FrameBufferBase, video_mem_Info.FrameBufferLength));
     pdev->fb = (BYTE*)video_mem_Info.FrameBufferBase;
     pdev->fb_size = video_mem_Info.FrameBufferLength;
@@ -843,9 +843,9 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
     QXLPHYSICAL phys_mem;
     UINT8 *base_mem;
 
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, in_pdev));
-
     pdev = (PDev*)in_pdev;
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx\n", __FUNCTION__, in_pdev));
+
     if (!PrepareHardware(pdev)) {
         return FALSE;
     }
@@ -853,12 +853,12 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
 
     if (!(surf = (HSURF)CreateDeviceBitmap(pdev, pdev->resolution, pdev->bitmap_format, &phys_mem,
                                            &base_mem, 0, DEVICE_BITMAP_ALLOCATION_TYPE_SURF0))) {
-        DEBUG_PRINT((NULL, 0, "%s: create device surface failed, 0x%lx\n",
+        DEBUG_PRINT((pdev, 0, "%s: create device surface failed, 0x%lx\n",
                      __FUNCTION__, pdev));
         goto err;
     }
 
-    DEBUG_PRINT((NULL, 1, "%s: EngModifySurface(0x%lx, 0x%lx, 0, MS_NOTSYSTEMMEMORY, "
+    DEBUG_PRINT((pdev, 1, "%s: EngModifySurface(0x%lx, 0x%lx, 0, MS_NOTSYSTEMMEMORY, "
                  "0x%lx, 0x%lx, %lu, NULL)\n",
                  __FUNCTION__,
                  surf,
@@ -873,12 +873,12 @@ HSURF DrvEnableSurface(DHPDEV in_pdev)
 
     EnableQXLPrimarySurface(pdev);
 
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
     return surf;
 
 err:
     DrvDisableSurface((DHPDEV)pdev);
-    DEBUG_PRINT((NULL, 0, "%s: 0x%lx err\n", __FUNCTION__, pdev));
+    DEBUG_PRINT((pdev, 0, "%s: 0x%lx err\n", __FUNCTION__, pdev));
     return NULL;
 }
 
@@ -902,7 +902,7 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
     PDev *pdev = (PDev*)in_pdev;
     DrawArea drawarea;
 
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
     DisableQXLPrimarySurface(pdev);
 
@@ -926,7 +926,8 @@ BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
 {
     PDev* pdev = (PDev*)in_pdev;
 
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx %d\n", __FUNCTION__, pdev, enable));
+
     if (enable) {
         InitResources(pdev);
         EnableQXLPrimarySurface(pdev);
@@ -935,7 +936,7 @@ BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
         DisableQXLPrimarySurface(pdev);
         RemoveVRamSlot(pdev);
     }
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit TRUE\n", __FUNCTION__, pdev));
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx exit %d\n", __FUNCTION__, pdev, enable));
     return TRUE;
 }
 
