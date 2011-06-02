@@ -2402,8 +2402,9 @@ size_t mspace_footprint(mspace msp) {
   mstate ms = (mstate)msp;
   if (ok_magic(ms)) {
     result = ms->footprint;
+  } else {
+    USAGE_ERROR_ACTION(ms,ms);
   }
-  USAGE_ERROR_ACTION(ms,ms);
   return result;
 }
 
@@ -2413,8 +2414,9 @@ size_t mspace_max_footprint(mspace msp) {
   mstate ms = (mstate)msp;
   if (ok_magic(ms)) {
     result = ms->max_footprint;
+  } else {
+    USAGE_ERROR_ACTION(ms,ms);
   }
-  USAGE_ERROR_ACTION(ms,ms);
   return result;
 }
 
