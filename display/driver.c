@@ -708,6 +708,8 @@ static BOOL PrepareHardware(PDev *pdev)
     pdev->asyncable[ASYNCABLE_DESTROY_SURFACE][SYNC] = dev_info.destroy_surface_wait_port;
     pdev->asyncable[ASYNCABLE_DESTROY_ALL_SURFACES][ASYNC] = dev_info.destroy_all_surfaces_async_port;
     pdev->asyncable[ASYNCABLE_DESTROY_ALL_SURFACES][SYNC] = dev_info.destroy_all_surfaces_port;
+    pdev->asyncable[ASYNCABLE_FLUSH_SURFACES][ASYNC] = dev_info.flush_surfaces_async_port;
+    pdev->asyncable[ASYNCABLE_FLUSH_SURFACES][SYNC] = NULL;
 
     pdev->display_event = dev_info.display_event;
     pdev->cursor_event = dev_info.cursor_event;
@@ -768,6 +770,8 @@ static BOOL PrepareHardware(PDev *pdev)
     pdev->fb_phys = dev_info.fb_phys;
 
     pdev->memslot_del_port = dev_info.memslot_del_port;
+
+    pdev->flush_release_port = dev_info.flush_release_port;
 
     pdev->primary_memory_start = dev_info.surface0_area;
     pdev->primary_memory_size = dev_info.surface0_area_size;

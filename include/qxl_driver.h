@@ -60,6 +60,8 @@ typedef struct QXLDriverInfo {
     PUCHAR destroy_primary_async_port;
     PUCHAR destroy_surface_async_port;
     PUCHAR destroy_all_surfaces_async_port;
+    PUCHAR flush_surfaces_async_port;
+    PUCHAR flush_release_port;
     PEVENT display_event;
     PEVENT cursor_event;
     PEVENT sleep_event;

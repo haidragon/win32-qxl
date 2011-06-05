@@ -171,6 +171,7 @@ typedef enum {
     ASYNCABLE_DESTROY_PRIMARY,
     ASYNCABLE_DESTROY_SURFACE,
     ASYNCABLE_DESTROY_ALL_SURFACES,
+    ASYNCABLE_FLUSH_SURFACES,
 
     ASYNCABLE_COUNT
 } asyncable_t;
@@ -323,6 +324,7 @@ typedef struct PDev {
     PUCHAR asyncable[ASYNCABLE_COUNT][2];
     HSEMAPHORE io_sem;
     PUCHAR memslot_del_port;
+    PUCHAR flush_release_port;
 
     UINT8* primary_memory_start;
     UINT32 primary_memory_size;

@@ -981,6 +981,8 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
                 dev_ext->io_port + QXL_IO_DESTROY_SURFACE_ASYNC;
             driver_info->destroy_all_surfaces_async_port =
                 dev_ext->io_port + QXL_IO_DESTROY_ALL_SURFACES_ASYNC;
+            driver_info->flush_surfaces_async_port = dev_ext->io_port + QXL_IO_FLUSH_SURFACES_ASYNC;
+            driver_info->flush_release_port = dev_ext->io_port + QXL_IO_FLUSH_RELEASE;
 
             driver_info->log_port = dev_ext->io_port + QXL_IO_LOG;
             driver_info->log_buf = dev_ext->ram_header->log_buf;
