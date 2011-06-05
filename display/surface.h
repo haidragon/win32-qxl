@@ -55,10 +55,16 @@ static _inline void FreeSurfaceInfo(PDev *pdev, UINT32 surface_id)
     if (surface_id == 0) {
         return;
     }
-
     EngAcquireSemaphore(pdev->Res->surface_sem);
 
+    DEBUG_PRINT((pdev, 9, "%s: %p: %d\n", __FUNCTION__, pdev, surface_id));
     surface = &pdev->Res->surfaces_info[surface_id];
+    if (surface->draw_area.base_mem == NULL) {
+        DEBUG_PRINT((pdev, 9, "%s: %p: %d: double free. safely ignored\n", __FUNCTION__,
+            pdev, surface_id));
+        EngReleaseSemaphore(pdev->Res->surface_sem);
+        return;
+    }
     surface->draw_area.base_mem = NULL; /* Mark as not used */
     surface->u.next_free = pdev->Res->free_surfaces;
     pdev->Res->free_surfaces = surface;
