@@ -107,7 +107,7 @@ static CallCounterInfo counters_info[NUM_CALL_COUNTERS] = {
 
 void DebugPrintV(PDev *pdev, const char *message, va_list ap)
 {
-    if (pdev && pdev->log_buf) {
+    if (pdev && pdev->log_buf && pdev->Res) {
         EngAcquireSemaphore(pdev->Res->print_sem);
         _snprintf(pdev->log_buf, QXL_LOG_BUF_SIZE, QXLDD_DEBUG_PREFIX);
         _vsnprintf(pdev->log_buf + strlen(QXLDD_DEBUG_PREFIX),
