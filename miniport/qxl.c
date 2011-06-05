@@ -79,6 +79,7 @@ typedef struct QXLExtension {
 
     PHYSICAL_ADDRESS vram_physical;
     ULONG vram_size;
+    UINT8 *vram_start;
 
     ULONG current_mode;
     ULONG n_modes;
@@ -947,6 +948,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
                 DEBUG_PRINT((0, "%s: map filed\n", __FUNCTION__));
                 goto err;
             }
+            dev_ext->vram_start = mem_info->VideoRamBase;
             DEBUG_PRINT((0, "%s: vram size %lu ret size %lu fb vaddr 0x%lx\n",
                          __FUNCTION__,
                          dev_ext->vram_size,
@@ -982,6 +984,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             if ((error = VideoPortUnmapMemory(dev_ext, addr, NULL)) != NO_ERROR) {
                 DEBUG_PRINT((0, "%s: unmap failed\n", __FUNCTION__));
             }
+            dev_ext->vram_start = NULL;
         }
         break;
     case IOCTL_VIDEO_RESET_DEVICE:
