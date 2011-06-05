@@ -187,7 +187,11 @@ typedef struct DrawArea {
 
 typedef struct SurfaceInfo SurfaceInfo;
 struct SurfaceInfo {
-    DrawArea draw_area;
+    DrawArea    draw_area;
+    HBITMAP     hbitmap;
+    SIZEL       size;
+    UINT8      *copy;
+    ULONG       bitmap_format;
     union {
         PDev *pdev;
         SurfaceInfo *next_free;

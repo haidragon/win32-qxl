@@ -771,8 +771,12 @@ void PushSurfaceCmd(PDev *pdev, QXLSurfaceCmd *surface_cmd)
     EngReleaseSemaphore(pdev->Res->cmd_sem);
 }
 
+QXLPHYSICAL SurfaceToPhysical(PDev *pdev, UINT8 *base_mem)
+{
+    return PA(pdev, base_mem, pdev->vram_mem_slot);
+}
 
-_inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT32 *stride,
+_inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, INT32 *stride,
                               UINT8 **base_mem, QXLPHYSICAL *phys_mem, UINT8 allocation_type)
 {
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
@@ -794,7 +798,7 @@ _inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT
         *stride = x * depth / 8;
         *stride = ALIGN(*stride, 4);
         *base_mem = __AllocMem(pdev, MSPACE_TYPE_VRAM, (*stride) * y, FALSE);
-        *phys_mem = PA(pdev, (PVOID)((UINT64)*base_mem), pdev->vram_mem_slot);
+        *phys_mem = SurfaceToPhysical(pdev, *base_mem);
         break;
     case DEVICE_BITMAP_ALLOCATION_TYPE_RAM:
         /* used only before suspend to sleep (DrvAssertMode(FALSE)) and then released
@@ -811,7 +815,7 @@ _inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT
 }
 
 void QXLGetSurface(PDev *pdev, QXLPHYSICAL *surface_phys, UINT32 x, UINT32 y, UINT32 depth,
-                   UINT32 *stride, UINT8 **base_mem, UINT8 allocation_type)
+                   INT32 *stride, UINT8 **base_mem, UINT8 allocation_type)
 {
     GetSurfaceMemory(pdev, x, y, depth, stride, base_mem, surface_phys, allocation_type);
 }

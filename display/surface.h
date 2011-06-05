@@ -105,4 +105,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
                            UINT8 **base_mem, UINT32 surface_id, UINT8 allocation_type);
 VOID DeleteDeviceBitmap(PDev *pdev, UINT32 surface_id, UINT8 allocation_type);
 
+int MoveAllSurfacesToVideoRam(PDev *pdev);
+BOOL MoveAllSurfacesToRam(PDev *pdev);
+
 #endif

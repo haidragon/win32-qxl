@@ -1300,7 +1300,9 @@ VOID APIENTRY DrvDeleteDeviceBitmap(DHSURF dhsurf)
 
     ASSERT(pdev, surface_id < pdev->n_surfaces);
 
-    DeleteDeviceBitmap(surface->u.pdev, surface_id, DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
+    DeleteDeviceBitmap(surface->u.pdev, surface_id,
+                       surface->copy ? DEVICE_BITMAP_ALLOCATION_TYPE_RAM
+                                     : DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
 }
 
 #ifdef CALL_TEST

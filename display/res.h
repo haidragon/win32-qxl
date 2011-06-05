@@ -31,8 +31,9 @@ void PushDrawable(PDev *pdev, QXLDrawable *drawable);
 QXLSurfaceCmd *SurfaceCmd(PDev *pdev, UINT8 type, UINT32 surface_id);
 void PushSurfaceCmd(PDev *pdev, QXLSurfaceCmd *surface_cmd);
 
+QXLPHYSICAL SurfaceToPhysical(PDev *pdev, UINT8 *base_mem);
 void QXLGetSurface(PDev *pdev, QXLPHYSICAL *surface_phys, UINT32 x, UINT32 y, UINT32 depth,
-                   UINT32 *stride, UINT8 **base_mem, UINT8 allocation_type);
+                   INT32 *stride, UINT8 **base_mem, UINT8 allocation_type);
 void QXLGetDelSurface(PDev *pdev, QXLSurfaceCmd *surface, UINT32 surface_id, UINT8 allocation_type);
 void QXLDelSurface(PDev *pdev, UINT8 *base_mem, UINT8 allocation_type);
 BOOL QXLGetPath(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *path_phys, PATHOBJ *path);
