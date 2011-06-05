@@ -136,11 +136,15 @@ static UINT8 *CreateSurfaceHelper(PDev *pdev, UINT32 surface_id,
 }
 
 static void SendSurfaceCreateCommand(PDev *pdev, UINT32 surface_id, SIZEL size,
-                                     UINT32 surface_format, INT32 stride, QXLPHYSICAL phys_mem)
+                                     UINT32 surface_format, INT32 stride, QXLPHYSICAL phys_mem,
+                                     int keep_data)
 {
     QXLSurfaceCmd *surface;
 
     surface = SurfaceCmd(pdev, QXL_SURFACE_CMD_CREATE, surface_id);
+    if (keep_data) {
+        surface->flags |= QXL_SURF_FLAG_KEEP_DATA;
+    }
     surface->u.surface_create.format = surface_format;
     surface->u.surface_create.width = size.cx;
     surface->u.surface_create.height = size.cy;
@@ -185,7 +189,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
     }
 
     if (allocation_type != DEVICE_BITMAP_ALLOCATION_TYPE_SURF0) {
-        SendSurfaceCreateCommand(pdev, surface_id, size, surface_format, -stride, *phys_mem);
+        SendSurfaceCreateCommand(pdev, surface_id, size, surface_format, -stride, *phys_mem, 0);
     }
 
     return hbitmap;
@@ -269,7 +273,7 @@ BOOL MoveSurfaceToVideoRam(PDev *pdev, UINT32 surface_id)
     EngFreeMem(surface_info->copy);
     surface_info->copy = NULL;
     SendSurfaceCreateCommand(pdev, surface_id, surface_info->size, surface_format,
-                             -stride, phys_mem);
+                             -stride, phys_mem, 1);
     return TRUE;
 }
 
@@ -356,7 +360,9 @@ BOOL MoveAllSurfacesToRam(PDev *pdev)
                          __FUNCTION__, surface_id));
             phys_mem = SurfaceToPhysical(pdev, surface_info->draw_area.base_mem);
             SendSurfaceCreateCommand(pdev, surface_id, surf_obj->sizlBitmap,
-                                     surface_info->bitmap_format, -surf_obj->lDelta, phys_mem);
+                                     surface_info->bitmap_format, -surf_obj->lDelta, phys_mem,
+                                     /* the surface is still there, tell server not to erase */
+                                     1);
             return FALSE;
         }
         QXLDelSurface(pdev, surface_info->draw_area.base_mem, DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);

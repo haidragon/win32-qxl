@@ -937,7 +937,11 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
 
     DEBUG_PRINT((pdev, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
-    DisableQXLPrimarySurface(pdev, 1 /* hide mouse */);
+    // Don't destroy the primary - it's destroyed by destroy_all_surfaces
+    // at AssertModeDisable. Also, msdn specifically mentions DrvDisableSurface
+    // should not touch the hardware, that should be done just via DrvAssertMode
+    // (http://msdn.microsoft.com/en-us/library/ff556200%28VS.85%29.aspx)
+    pdev->surf_enable = FALSE;
     UnmapFB(pdev);
 
     if (pdev->surf) {
@@ -951,15 +955,56 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
         pdev->mem_slots = NULL;
     }
 
-    DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
 }
 
-BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
+static BOOL AssertModeDisable(PDev *pdev)
 {
-    PDev* pdev = (PDev*)in_pdev;
+    DEBUG_PRINT((pdev, 3, "%s entry\n", __FUNCTION__));
+    /* flush command ring and update all surfaces */
+    async_io(pdev, ASYNCABLE_FLUSH_SURFACES, 0);
+    async_io(pdev, ASYNCABLE_DESTROY_ALL_SURFACES, 0);
+    /* move all surfaces from device to system memory */
+    if (!MoveAllSurfacesToRam(pdev)) {
+        return FALSE;
+    }
+    /* Free release ring contents */
+    ReleaseCacheDeviceMemoryResources(pdev);
+    EmptyReleaseRing(pdev);
+    /* Get the last free list onto the release ring */
+    sync_io(pdev, pdev->flush_release_port, 0);
+    DEBUG_PRINT((pdev, 4, "%s after FLUSH_RELEASE\n", __FUNCTION__));
+    /* And release that. mspace allocators should be clean after. */
+    EmptyReleaseRing(pdev);
+    RemoveVRamSlot(pdev);
+    DebugCountAliveSurfaces(pdev);
+    DEBUG_PRINT((pdev, 4, "%s: [%d,%d] [%d,%d] [%d,%d] %lx\n", __FUNCTION__,
+        pdev->cmd_ring->prod, pdev->cmd_ring->cons,
+        pdev->cursor_ring->prod, pdev->cursor_ring->cons,
+        pdev->release_ring->prod, pdev->release_ring->cons,
+        pdev->Res->free_outputs));
+    DEBUG_PRINT((pdev, 4, "%s exit\n", __FUNCTION__));
+    return TRUE;
+}
 
-    DEBUG_PRINT((pdev, 1, "%s: 0x%lx %d\n", __FUNCTION__, pdev, enable));
+static void AssertModeEnable(PDev *pdev)
+{
+    InitResources(pdev);
+    InitDeviceMemoryResources(pdev);
+    DEBUG_PRINT((pdev, 3, "%s: [%d,%d] [%d,%d] [%d,%d] %lx\n", __FUNCTION__,
+        pdev->cmd_ring->prod, pdev->cmd_ring->cons,
+        pdev->cursor_ring->prod, pdev->cursor_ring->cons,
+        pdev->release_ring->prod, pdev->release_ring->cons,
+        pdev->Res->free_outputs));
+    EnableQXLPrimarySurface(pdev);
+    CreateVRamSlot(pdev);
+    DebugCountAliveSurfaces(pdev);
+    MoveAllSurfacesToVideoRam(pdev);
+    DebugCountAliveSurfaces(pdev);
+}
 
+BOOL DrvAssertModeOld(PDev *pdev, BOOL enable)
+{
     if (enable) {
         InitResources(pdev);
         EnableQXLPrimarySurface(pdev);
@@ -970,6 +1015,35 @@ BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
     }
     DEBUG_PRINT((pdev, 1, "%s: 0x%lx exit %d\n", __FUNCTION__, pdev, enable));
     return TRUE;
+}
+
+BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
+{
+    PDev* pdev = (PDev*)in_pdev;
+    BOOL ret = TRUE;
+
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx %d\n", __FUNCTION__, pdev, enable));
+    if (pdev->pci_revision < QXL_REVISION_STABLE_V10) {
+        return DrvAssertModeOld(pdev, enable);
+    }
+    /* new implementation that works correctly only with newer devices
+     * that implement QXL_IO_FLUSH_RELEASE */
+    if (pdev->enabled == enable) {
+        DEBUG_PRINT((pdev, 1, "%s: called twice with same argument (%d)\n", __FUNCTION__,
+            enable));
+        return TRUE;
+    }
+    pdev->enabled = enable;
+    if (enable) {
+        AssertModeEnable(pdev);
+    } else {
+        ret = AssertModeDisable(pdev);
+        if (!ret) {
+            pdev->enabled = !enable;
+        }
+    }
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx exit %d\n", __FUNCTION__, pdev, enable));
+    return ret;
 }
 
 ULONG DrvGetModes(HANDLE driver, ULONG dev_modes_size, DEVMODEW *dev_modes)
