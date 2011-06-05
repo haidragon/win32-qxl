@@ -366,6 +366,19 @@ static void FlushReleaseRing(PDev *pdev)
     pdev->Res->free_outputs = output;
 }
 
+void EmptyReleaseRing(PDev *pdev)
+{
+    int count = 0;
+
+    EngAcquireSemaphore(pdev->Res->malloc_sem);
+    while (pdev->Res->free_outputs || !SPICE_RING_IS_EMPTY(pdev->release_ring)) {
+        FlushReleaseRing(pdev);
+        count++;
+    }
+    EngReleaseSemaphore(pdev->Res->malloc_sem);
+    DEBUG_PRINT((pdev, 3, "%s: complete after %d rounds\n", __FUNCTION__, count));
+}
+
 // todo: separate VRAM releases from DEVRAM releases
 #define AllocMem(pdev, mspace_type, size) __AllocMem(pdev, mspace_type, size, TRUE)
 static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size, BOOL force)
@@ -506,6 +519,44 @@ static void InitMspace(PDev *pdev, UINT32 mspace_type, UINT8 *start, size_t capa
     res->mspaces[mspace_type].mspace_end = start + capacity;
 }
 
+static void ResetCache(PDev *pdev)
+{
+    int i;
+
+    RtlZeroMemory(pdev->Res->image_key_lookup,
+                  sizeof(pdev->Res->image_key_lookup));
+    RtlZeroMemory(pdev->Res->cache_image_pool,
+                  sizeof(pdev->Res->cache_image_pool));
+    RingInit(&pdev->Res->cache_image_lru);
+    for (i = 0; i < IMAGE_POOL_SIZE; i++) {
+        RingAdd(pdev, &pdev->Res->cache_image_lru,
+                &pdev->Res->cache_image_pool[i].lru_link);
+    }
+
+    RtlZeroMemory(pdev->Res->image_cache, sizeof(pdev->Res->image_cache));
+    RtlZeroMemory(pdev->Res->cursor_cache, sizeof(pdev->Res->cursor_cache));
+    RingInit(&pdev->Res->cursors_lru);
+    pdev->Res->num_cursors = 0;
+    pdev->Res->last_cursor_id = 0;
+
+    RtlZeroMemory(pdev->Res->palette_cache, sizeof(pdev->Res->palette_cache));
+    RingInit(&pdev->Res->palette_lru);
+    pdev->Res->num_palettes = 0;
+}
+
+/* Init anything that resides on the device memory (pci vram and devram bars).
+ * NOTE: TODO better documentation of what is on the guest ram (saved during sleep)
+ * and what is on the pci device bars (bar 0 and 1, devram and vram)
+ */
+void InitDeviceMemoryResources(PDev *pdev)
+{
+    DEBUG_PRINT((pdev, 0, "%s: %d, %d\n", __FUNCTION__, pdev->num_io_pages * PAGE_SIZE,
+        pdev->fb_size));
+    InitMspace(pdev, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
+    InitMspace(pdev, MSPACE_TYPE_VRAM, pdev->fb, pdev->fb_size);
+    ResetCache(pdev);
+}
+
 static void InitRes(PDev *pdev)
 {
     UINT32 i;
@@ -555,30 +606,9 @@ static void InitRes(PDev *pdev)
         PANIC(pdev, "Res cache sem creation failed\n");
     }
 
-    InitMspace(pdev, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
-    InitMspace(pdev, MSPACE_TYPE_VRAM, pdev->fb, pdev->fb_size);
     pdev->Res->update_id = *pdev->dev_update_id;
+    InitDeviceMemoryResources(pdev);
 
-    RtlZeroMemory(pdev->Res->image_key_lookup,
-                  sizeof(pdev->Res->image_key_lookup));
-    RtlZeroMemory(pdev->Res->cache_image_pool,
-                  sizeof(pdev->Res->cache_image_pool));
-    RingInit(&pdev->Res->cache_image_lru);
-    for (i = 0; i < IMAGE_POOL_SIZE; i++) {
-        RingAdd(pdev, &pdev->Res->cache_image_lru,
-                &pdev->Res->cache_image_pool[i].lru_link);
-    }
-
-    RtlZeroMemory(pdev->Res->image_cache, sizeof(pdev->Res->image_cache));
-    RtlZeroMemory(pdev->Res->cursor_cache, sizeof(pdev->Res->cursor_cache));
-    RingInit(&pdev->Res->cursors_lru);
-    pdev->Res->num_cursors = 0;
-    pdev->Res->last_cursor_id = 0;
-
-    RtlZeroMemory(pdev->Res->palette_cache, sizeof(pdev->Res->palette_cache));
-    RingInit(&pdev->Res->palette_lru);
-    pdev->Res->num_palettes = 0;
-    
     pdev->Res->driver = pdev->driver;
 
     ONDBG(pdev->Res->num_outputs = 0);
@@ -1597,6 +1627,18 @@ static _inline InternalPalette *PaletteCacheGet(PDev *pdev, UINT32 unique)
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));
     EngReleaseSemaphore(pdev->Res->palette_cache_sem);
     return NULL;
+}
+
+static void PaletteCacheClear(PDev *pdev)
+{
+    DEBUG_PRINT((pdev, 1, "%s\n", __FUNCTION__));
+    EngAcquireSemaphore(pdev->Res->palette_cache_sem);
+    while(pdev->Res->num_palettes) {
+        ASSERT(pdev, RingGetTail(pdev, &pdev->Res->palette_lru));
+        PaletteCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->palette_lru),
+                                             InternalPalette, lru_link));
+    }
+    EngReleaseSemaphore(pdev->Res->palette_cache_sem);
 }
 
 static _inline void PaletteCacheAdd(PDev *pdev, InternalPalette *palette)
@@ -2909,6 +2951,18 @@ static void CursorCacheRemove(PDev *pdev, InternalCursor *cursor)
 
 }
 
+static void CursorCacheClear(PDev *pdev)
+{
+    DEBUG_PRINT((pdev, 1, "%s\n", __FUNCTION__));
+    EngAcquireSemaphore(pdev->Res->cursor_cache_sem);
+    while (pdev->Res->num_cursors) {
+        ASSERT(pdev, RingGetTail(pdev, &pdev->Res->cursors_lru));
+        CursorCacheRemove(pdev, CONTAINEROF(RingGetTail(pdev, &pdev->Res->cursors_lru),
+                                            InternalCursor, lru_link));
+    }
+    EngReleaseSemaphore(pdev->Res->cursor_cache_sem);
+}
+
 static void CursorCacheAdd(PDev *pdev, InternalCursor *cursor)
 {
     int key;
@@ -3323,6 +3377,13 @@ BOOL GetTransparentCursor(PDev *pdev, QXLCursorCmd *cmd)
 
     DEBUG_PRINT((pdev, 8, "%s: done\n", __FUNCTION__));
     return TRUE;
+}
+
+void ReleaseCacheDeviceMemoryResources(PDev *pdev)
+{
+    DEBUG_PRINT((pdev, 0, "%s \n", __FUNCTION__));
+    PaletteCacheClear(pdev);
+    CursorCacheClear(pdev);
 }
 
 static void quic_usr_error(QuicUsrContext *usr, const char *format, ...)

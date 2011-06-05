@@ -70,6 +70,9 @@ void ResDestroyGlobals();
 void CheckAndSetSSE2();
 #endif
 void ResetAllDevices();
+void EmptyReleaseRing(PDev *pdev);
+void InitDeviceMemoryResources(PDev *pdev);
+void ReleaseCacheDeviceMemoryResources(PDev *pdev);
 extern DevRes **global_res;
 
 #endif
