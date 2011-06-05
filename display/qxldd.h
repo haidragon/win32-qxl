@@ -61,6 +61,14 @@
     EngDebugBreak();                                            \
 }
 
+#define PUNT_IF_DISABLED(pdev) \
+    do { \
+        if (!pdev->enabled) { \
+            DEBUG_PRINT((pdev, 0, "%s: punting\n", __FUNCTION__)); \
+            return FALSE; \
+        } \
+    } while (0)
+
 typedef enum {
     QXL_SUCCESS,
     QXL_FAILED,
@@ -344,6 +352,8 @@ typedef struct PDev {
 
     UINT32 n_surfaces;
     SurfaceInfo surface0_info;
+
+    UINT32 enabled; /* 1 between DrvAssertMode(TRUE) and DrvAssertMode(FALSE) */
 
     UCHAR  pci_revision;
 } PDev;

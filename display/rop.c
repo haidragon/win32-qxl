@@ -1265,6 +1265,8 @@ BOOL APIENTRY DrvBitBlt(SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask, CLIPOBJ *cli
         pdev = (PDev *)dest->dhpdev;
     }
 
+    PUNT_IF_DISABLED(pdev);
+
     CountCall(pdev, CALL_COUNTER_BIT_BLT);
 
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
@@ -1293,6 +1295,8 @@ BOOL APIENTRY DrvCopyBits(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip,
     } else {
         pdev = (PDev *)dest->dhpdev;
     }
+
+    PUNT_IF_DISABLED(pdev);
 
     CountCall(pdev, CALL_COUNTER_BIT_BLT);
 
@@ -1461,6 +1465,8 @@ BOOL APIENTRY DrvStretchBltROP(SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask, CLIPO
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
     CountCall(pdev, CALL_COUNTER_STRETCH_BLT_ROP);
 
+    PUNT_IF_DISABLED(pdev);
+
     if ((res = _StretchBlt(pdev, dest, src, mask, clip, color_trans,
                            mode == HALFTONE ? color_adjust: NULL, brush_pos,
                            dest_rect, src_rect, mask_pos, mode, brush,rop4))) {
@@ -1494,6 +1500,8 @@ BOOL APIENTRY DrvStretchBlt(SURFOBJ *dest, SURFOBJ *src, SURFOBJ *mask, CLIPOBJ 
 
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
     CountCall(pdev, CALL_COUNTER_STRETCH_BLT);
+    PUNT_IF_DISABLED(pdev);
+
     if ((res = _StretchBlt(pdev, dest, src, mask, clip, color_trans,
                            mode == HALFTONE ? color_adjust: NULL, NULL, dest_rect,
                            src_rect, mask_pos, mode, NULL, (mask) ? 0xccaa:  0xcccc))) {
@@ -1589,6 +1597,8 @@ BOOL APIENTRY DrvAlphaBlend(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLATEOBJ
 
     pdev = (PDev *)dest->dhpdev;
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
+
+    PUNT_IF_DISABLED(pdev);
 
     ASSERT(pdev, src_rect && src_rect->left < src_rect->right &&
            src_rect->top < src_rect->bottom);
@@ -1687,6 +1697,8 @@ BOOL APIENTRY DrvTransparentBlt(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLAT
     }
 
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
+
+    PUNT_IF_DISABLED(pdev);
 
     ASSERT(pdev, src_rect && src_rect->left < src_rect->right &&
            src_rect->top < src_rect->bottom);

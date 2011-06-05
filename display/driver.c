@@ -516,6 +516,7 @@ DHPDEV DrvEnablePDEV(DEVMODEW *dev_mode, PWSTR ignore1, ULONG ignore2, HSURF *ig
     RtlCopyMemory(dev_caps, &gdi_info, dev_caps_size);
     RtlCopyMemory(in_dev_info, &dev_info, dev_inf_size);
 
+    pdev->enabled = TRUE; /* assume no operations before a DrvEnablePDEV. */
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
     return(DHPDEV)pdev;
 
@@ -1173,6 +1174,8 @@ BOOL APIENTRY DrvStrokePath(SURFOBJ *surf, PATHOBJ *path, CLIPOBJ *clip, XFORMOB
         return TRUE;
     }
 
+    PUNT_IF_DISABLED(pdev);
+
     CountCall(pdev, CALL_COUNTER_STROKE_PATH);
 
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
@@ -1264,6 +1267,8 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
     if (!pdev->vram_slot_initialized || pdev->bitmap_format != format || pdev->fb == 0) {
         return 0;
     }
+
+    PUNT_IF_DISABLED(pdev);
 
     surface_id = GetFreeSurface(pdev);
     if (!surface_id) {
