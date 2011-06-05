@@ -152,7 +152,6 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
 out_error3:
     QXLDelSurface(pdev, *base_mem, allocation_type);
 out_error2:
-    FreeSurface(pdev, surface_id);
     EngDeleteSurface((HSURF)surf);
 out_error1:
     return 0;
