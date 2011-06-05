@@ -19,6 +19,9 @@
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
+#ifdef DBG
+#include <stdio.h>
+#endif
 #include <ddraw.h>
 #include <dxmini.h>
 #include "qxldd.h"
@@ -58,9 +61,33 @@ static _inline UINT64 VA(PDev *pdev, QXLPHYSICAL paddr, UINT8 slot_id)
 #define RELEASE_RES(pdev, res) if (!--(res)->refs) (res)->free(pdev, res);
 #define GET_RES(res) (++(res)->refs)
 
+/* Debug helpers - tag each resource with this enum */
+enum {
+    RESOURCE_TYPE_DRAWABLE = 1,
+    RESOURCE_TYPE_SURFACE,
+    RESOURCE_TYPE_PATH,
+    RESOURCE_TYPE_CLIP_RECTS,
+    RESOURCE_TYPE_QUIC_IMAGE,
+    RESOURCE_TYPE_BITMAP_IMAGE,
+    RESOURCE_TYPE_SURFACE_IMAGE,
+    RESOURCE_TYPE_SRING,
+    RESOURCE_TYPE_CURSOR,
+    RESOURCE_TYPE_BUF,
+    RESOURCE_TYPE_UPDATE,
+};
+
+#ifdef DBG
+#define RESOURCE_TYPE(res, val) do { res->type = val; } while (0)
+#else
+#define RESOURCE_TYPE(res, val)
+#endif
+
 typedef struct Resource Resource;
 struct Resource {
     UINT32 refs;
+#ifdef DBG
+    UINT32 type;
+#endif
     void (*free)(PDev *pdev, Resource *res);
     UINT8 res[0];
 };
@@ -90,12 +117,57 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable);
 
 typedef struct QXLOutput {
     UINT32 num_res;
+#ifdef DBG
+    UINT32 type;
+#endif
     Resource *resources[MAX_OUTPUT_RES];
     UINT8 data[0];
 } QXLOutput;
 
 static int have_sse2 = FALSE;
 
+#ifndef DBG
+static _inline void DebugShowOutput(PDev *pdev, QXLOutput* output)
+{
+}
+#else
+const char* resource_type_to_string(QXLOutput *output, UINT32 type)
+{
+    static char buf[1024];
+
+    switch (type) {
+    case 0: return "UNSET";
+    case RESOURCE_TYPE_DRAWABLE: return "drawable";
+    case RESOURCE_TYPE_SURFACE: {
+        QXLSurfaceCmd *surface_cmd = (QXLSurfaceCmd*)output->data;
+        _snprintf(buf, sizeof(buf) - 1, "surface %u", surface_cmd->surface_id);
+        return buf;
+    }
+    case RESOURCE_TYPE_PATH: return "path";
+    case RESOURCE_TYPE_CLIP_RECTS: return "clip_rects";
+    case RESOURCE_TYPE_QUIC_IMAGE: return "quic_image";
+    case RESOURCE_TYPE_BITMAP_IMAGE: return "bitmap_image";
+    case RESOURCE_TYPE_SURFACE_IMAGE: return "surface_image";
+    case RESOURCE_TYPE_SRING: return "sring";
+    case RESOURCE_TYPE_CURSOR: return "cursor";
+    case RESOURCE_TYPE_BUF: return "buf";
+    case RESOURCE_TYPE_UPDATE: return "update";
+    }
+    return "UNDEFINED";
+}
+
+static void DebugShowOutput(PDev *pdev, QXLOutput* output)
+{
+    UINT32 i;
+
+    DEBUG_PRINT((pdev, 11, "output: %s res %d\n", resource_type_to_string(output, output->type),
+                output->num_res));
+    for (i = 0 ; i < output->num_res ; ++i) {
+        DEBUG_PRINT((pdev, 11, "type %s\n", resource_type_to_string(output,
+            output->resources[i]->type)));
+    }
+}
+#endif
 
 UINT64 ReleaseOutput(PDev *pdev, UINT64 output_id)
 {
@@ -106,6 +178,7 @@ UINT64 ReleaseOutput(PDev *pdev, UINT64 output_id)
 
     ASSERT(pdev, output_id);
     DEBUG_PRINT((pdev, 9, "%s 0x%x\n", __FUNCTION__, output));
+    DebugShowOutput(pdev, output);
 
     for (now = output->resources, end = now + output->num_res; now < end; now++) {
         RELEASE_RES(pdev, *now);
@@ -570,6 +643,7 @@ static QXLDrawable *GetDrawable(PDev *pdev)
 
     output = (QXLOutput *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(QXLOutput) + sizeof(QXLDrawable));
     output->num_res = 0;
+    RESOURCE_TYPE(output, RESOURCE_TYPE_DRAWABLE);
     ((QXLDrawable *)output->data)->release_info.id = (UINT64)output;
     DEBUG_PRINT((pdev, 9, "%s 0x%x\n", __FUNCTION__, output));
     ONDBG(pdev->Res->num_outputs++); //todo: atomic
@@ -620,6 +694,7 @@ static QXLSurfaceCmd *GetSurfaceCmd(PDev *pdev)
 
     output = (QXLOutput *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(QXLOutput) + sizeof(QXLSurfaceCmd));
     output->num_res = 0;
+    RESOURCE_TYPE(output, RESOURCE_TYPE_SURFACE);
     ((QXLSurfaceCmd *)output->data)->release_info.id = (UINT64)output;
     DEBUG_PRINT((pdev, 9, "%s 0x%x\n", __FUNCTION__, output));
     ONDBG(pdev->Res->num_outputs++); //todo: atomic
@@ -744,6 +819,7 @@ void QXLGetDelSurface(PDev *pdev, QXLSurfaceCmd *surface, UINT32 surface_id, UIN
     
     surface_res->refs = 1;
     surface_res->free = FreeDelSurface;
+    RESOURCE_TYPE(surface_res, RESOURCE_TYPE_SURFACE);
 
     internal = (InternalDelSurface *)surface_res->res;
     internal->surface_id = surface_id;
@@ -874,6 +950,7 @@ static Resource *__GetPath(PDev *pdev, PATHOBJ *path)
     ONDBG(pdev->Res->num_path_pages++);
     res->refs = 1;
     res->free = FreePath;
+    RESOURCE_TYPE(res, RESOURCE_TYPE_PATH);
 
     qxl_path = (QXLPath *)res->res;
     qxl_path->data_size = 0;
@@ -946,6 +1023,7 @@ static Resource *GetClipRects(PDev *pdev, CLIPOBJ *clip)
     ONDBG(pdev->Res->num_rects_pages++);
     res->refs = 1;
     res->free = FreeClipRects;
+    RESOURCE_TYPE(res, RESOURCE_TYPE_CLIP_RECTS);
     rects = (QXLClipRects *)res->res;
     rects->num_rects = 0;
 
@@ -1006,6 +1084,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable)
                                          sizeof(QXLRect));
         rects_res->refs = 1;
         rects_res->free = FreeClipRects;
+        RESOURCE_TYPE(rects_res, RESOURCE_TYPE_CLIP_RECTS);
         rects = (QXLClipRects *)rects_res->res;
         rects->num_rects = 1;
         rects->chunk.data_size = sizeof(QXLRect);
@@ -1695,6 +1774,7 @@ static _inline Resource *GetQuicImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color
     ONDBG(pdev->Res->num_bits_pages++);
     image_res->refs = 1;
     image_res->free = FreeQuicImage;
+    RESOURCE_TYPE(image_res, RESOURCE_TYPE_QUIC_IMAGE);
 
     internal = (InternalImage *)image_res->res;
     SetImageId(internal, cache_me, width, height, format, key);
@@ -1837,6 +1917,7 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
 
     image_res->refs = 1;
     image_res->free = FreeBitmapImage;
+    RESOURCE_TYPE(image_res, RESOURCE_TYPE_BITMAP_IMAGE);
 
     internal = (InternalImage *)image_res->res;
     SetImageId(internal, cache_me, width, height, format, key);
@@ -2147,6 +2228,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
         ONDBG(pdev->Res->num_bits_pages++);
         image_res->refs = 1;
         image_res->free = FreeSurfaceImage;
+        RESOURCE_TYPE(image_res, RESOURCE_TYPE_SURFACE_IMAGE);
 
         internal = (InternalImage *)image_res->res;
 
@@ -2313,6 +2395,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
         ONDBG(pdev->Res->num_bits_pages++);
         image_res->refs = 1;
         image_res->free = FreeSurfaceImage;
+        RESOURCE_TYPE(image_res, RESOURCE_TYPE_SURFACE_IMAGE);
 
         internal = (InternalImage *)image_res->res;
 
@@ -2477,6 +2560,7 @@ UINT8 *QXLGetBuf(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *buf_phys, UINT3
     ONDBG(pdev->Res->num_buf_pages++);
     buf_res->refs = 1;
     buf_res->free = FreeBuf;
+    RESOURCE_TYPE(buf_res, RESOURCE_TYPE_BUF);
 
     *buf_phys = PA(pdev, buf_res->res, pdev->main_mem_slot);
     DrawableAddRes(pdev, drawable, buf_res);
@@ -2494,6 +2578,7 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
     output = (QXLOutput *)AllocMem(pdev, sizeof(QXLOutput) + sizeof(QXLUpdateCmd));
+    RESOURCE_TYPE(output, RESOURCE_TYPE_UPDATE);
     output->num_res = 0;
     updat_cmd = (QXLUpdateCmd *)output->data;
     updat_cmd->release_info.id = (UINT64)output;
@@ -2663,6 +2748,7 @@ BOOL QXLGetStr(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *str_phys, FONTOBJ
     ONDBG(pdev->Res->num_glyphs_pages++);
     str_res->refs = 1;
     str_res->free = FreeSring;
+    RESOURCE_TYPE(str_res, RESOURCE_TYPE_SRING);
 
     qxl_str = (QXLString *)str_res->res;
     qxl_str->data_size = 0;
@@ -2741,6 +2827,7 @@ QXLCursorCmd *CursorCmd(PDev *pdev)
 
     output = (QXLOutput *)AllocMem(pdev, MSPACE_TYPE_DEVRAM, sizeof(QXLOutput) + sizeof(QXLCursorCmd));
     output->num_res = 0;
+    RESOURCE_TYPE(output, RESOURCE_TYPE_CURSOR);
     cursor_cmd = (QXLCursorCmd *)output->data;
     cursor_cmd->release_info.id = (UINT64)output;
     ONDBG(pdev->Res->num_outputs++); //todo: atomic
@@ -2956,6 +3043,7 @@ static BOOL GetCursorCommon(PDev *pdev, QXLCursorCmd *cmd, LONG hot_x, LONG hot_
     ONDBG(pdev->Res->num_cursor_pages++);
     res->refs = 1;
     res->free = FreeCursor;
+    RESOURCE_TYPE(res, RESOURCE_TYPE_CURSOR);
 
     internal = (InternalCursor *)res->res;
     internal->hsurf = surf->hsurf;
@@ -3193,6 +3281,7 @@ BOOL GetTransparentCursor(PDev *pdev, QXLCursorCmd *cmd)
     ONDBG(pdev->Res->num_cursor_pages++);
     res->refs = 1;
     res->free = FreeCursor;
+    RESOURCE_TYPE(res, RESOURCE_TYPE_CURSOR);
 
     internal = (InternalCursor *)res->res;
     internal->hsurf = NULL;
