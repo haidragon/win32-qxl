@@ -605,9 +605,11 @@ static VOID CreatePrimarySurface(PDev *pdev, UINT32 depth, UINT32 format,
     async_io(pdev, ASYNCABLE_CREATE_PRIMARY, 0);
 }
 
-static void DestroyPrimarySurface(PDev *pdev)
+static void DestroyPrimarySurface(PDev *pdev, int hide_mouse)
 {
-    HideMouse(pdev);
+    if (hide_mouse) {
+        HideMouse(pdev);
+    }
     async_io(pdev, ASYNCABLE_DESTROY_PRIMARY, 0);
 }
 
@@ -913,12 +915,12 @@ err:
     return NULL;
 }
 
-VOID DisableQXLPrimarySurface(PDev *pdev)
+VOID DisableQXLPrimarySurface(PDev *pdev, int hide_mouse)
 {
     DrawArea drawarea;
 
     if (pdev->surf_enable) {
-        DestroyPrimarySurface(pdev);
+        DestroyPrimarySurface(pdev, hide_mouse);
         pdev->surf_enable = FALSE;
     }
 }
@@ -935,8 +937,7 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
 
     DEBUG_PRINT((pdev, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
-    DisableQXLPrimarySurface(pdev);
-
+    DisableQXLPrimarySurface(pdev, 1 /* hide mouse */);
     UnmapFB(pdev);
 
     if (pdev->surf) {
@@ -964,7 +965,7 @@ BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
         EnableQXLPrimarySurface(pdev);
         CreateVRamSlot(pdev);
     } else {
-        DisableQXLPrimarySurface(pdev);
+        DisableQXLPrimarySurface(pdev, 0);
         RemoveVRamSlot(pdev);
     }
     DEBUG_PRINT((pdev, 1, "%s: 0x%lx exit %d\n", __FUNCTION__, pdev, enable));
