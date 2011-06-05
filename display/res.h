@@ -70,5 +70,6 @@ void ResDestroyGlobals();
 void CheckAndSetSSE2();
 #endif
 void ResetAllDevices();
+extern DevRes **global_res;
 
 #endif

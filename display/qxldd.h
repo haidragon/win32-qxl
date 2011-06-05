@@ -461,4 +461,29 @@ static _inline void sync_io(PDev *pdev, PUCHAR port, UCHAR val)
     EngReleaseSemaphore(pdev->io_sem);
 }
 
+#ifdef DBG
+#define DUMP_VRAM_MSPACE(pdev) \
+    do { \
+        DEBUG_PRINT((pdev, 0, "%s: dumping mspace vram (%p, %p)\n", __FUNCTION__, pdev, global_res ? global_res[pdev->dev_id] : NULL)); \
+        if (pdev && global_res && global_res[pdev->dev_id]) {  \
+            mspace_malloc_stats(global_res[pdev->dev_id]->mspaces[MSPACE_TYPE_VRAM]._mspace); \
+        } else { \
+            DEBUG_PRINT((pdev, 0, "nothing\n")); \
+        }\
+    } while (0)
+
+#define DUMP_DEVRAM_MSPACE(pdev) \
+    do { \
+        DEBUG_PRINT((pdev, 0, "%s: dumping mspace devram (%p, %p)\n", __FUNCTION__, pdev, global_res ? global_res[pdev->dev_id] : NULL)); \
+        if (pdev && global_res && global_res[pdev->dev_id]) {  \
+            mspace_malloc_stats(global_res[pdev->dev_id]->mspaces[MSPACE_TYPE_DEVRAM]._mspace); \
+        } else { \
+            DEBUG_PRINT((pdev, 0, "nothing\n")); \
+        }\
+    } while (0)
+#else
+#define DUMP_VRAM_MSPACE
+#define DUMP_DEVRAM_MSPACE
+#endif
+
 #endif

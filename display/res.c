@@ -423,11 +423,13 @@ void InitGlobalRes()
     }
 }
 
-static void InitMspace(DevRes *res, UINT32 mspace_type, UINT8 *io_pages_virt, size_t capacity)
+static void InitMspace(PDev *pdev, UINT32 mspace_type, UINT8 *start, size_t capacity)
 {
-    res->mspaces[mspace_type]._mspace = create_mspace_with_base(io_pages_virt, capacity, 0, NULL);
-    res->mspaces[mspace_type].mspace_start = io_pages_virt;
-    res->mspaces[mspace_type].mspace_end = io_pages_virt + capacity;
+    DevRes *res = pdev->Res;
+
+    res->mspaces[mspace_type]._mspace = create_mspace_with_base(start, capacity, 0, pdev);
+    res->mspaces[mspace_type].mspace_start = start;
+    res->mspaces[mspace_type].mspace_end = start + capacity;
 }
 
 static void InitRes(PDev *pdev)
@@ -479,8 +481,8 @@ static void InitRes(PDev *pdev)
         PANIC(pdev, "Res cache sem creation failed\n");
     }
 
-    InitMspace(pdev->Res, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
-    InitMspace(pdev->Res, MSPACE_TYPE_VRAM, pdev->fb, pdev->fb_size);
+    InitMspace(pdev, MSPACE_TYPE_DEVRAM, pdev->io_pages_virt, pdev->num_io_pages * PAGE_SIZE);
+    InitMspace(pdev, MSPACE_TYPE_VRAM, pdev->fb, pdev->fb_size);
     pdev->Res->update_id = *pdev->dev_update_id;
 
     RtlZeroMemory(pdev->Res->image_key_lookup,
