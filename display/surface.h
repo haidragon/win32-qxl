@@ -3,6 +3,21 @@
 
 #include "qxldd.h"
 
+/* Hooks supported by our surfaces. */
+#ifdef CALL_TEST
+#define QXL_SURFACE_HOOKS_CALL_TEST \
+    (HOOK_PLGBLT | HOOK_FILLPATH | HOOK_STROKEANDFILLPATH | HOOK_LINETO |  \
+    HOOK_GRADIENTFILL)
+#else
+#define QXL_SURFACE_HOOKS_CALL_TEST (0)
+#endif
+
+#define QXL_SURFACE_HOOKS \
+    (HOOK_SYNCHRONIZE | HOOK_COPYBITS |                                 \
+    HOOK_BITBLT | HOOK_TEXTOUT | HOOK_STROKEPATH | HOOK_STRETCHBLT |    \
+    HOOK_STRETCHBLTROP | HOOK_TRANSPARENTBLT | HOOK_ALPHABLEND | QXL_SURFACE_HOOKS_CALL_TEST)
+
+
 static _inline UINT32 GetSurfaceIdFromInfo(SurfaceInfo *info)
 {
   PDev *pdev;
