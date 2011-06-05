@@ -790,13 +790,21 @@ _inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, UINT
         *base_mem = AllocMem(pdev, MSPACE_TYPE_DEVRAM, (*stride) * y);
         *phys_mem = PA(pdev, *base_mem, pdev->main_mem_slot);
         break;
-    case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM: { 
+    case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM:
         *stride = x * depth / 8;
         *stride = ALIGN(*stride, 4);
         *base_mem = __AllocMem(pdev, MSPACE_TYPE_VRAM, (*stride) * y, FALSE);
         *phys_mem = PA(pdev, (PVOID)((UINT64)*base_mem), pdev->vram_mem_slot);
         break;
-    }
+    case DEVICE_BITMAP_ALLOCATION_TYPE_RAM:
+        /* used only before suspend to sleep (DrvAssertMode(FALSE)) and then released
+         * and copied back to VRAM */
+        *stride = x * depth / 8;
+        *stride = ALIGN(*stride, 4);
+        *base_mem = EngAllocMem(0 /* don't zero memory, will be copied over in a bit */,
+                                (*stride) * y, ALLOC_TAG);
+        *phys_mem = (QXLPHYSICAL)NULL; /* make sure no one uses it */
+        break;
     default:
         PANIC(pdev, "No allocation type");
     }
@@ -810,10 +818,18 @@ void QXLGetSurface(PDev *pdev, QXLPHYSICAL *surface_phys, UINT32 x, UINT32 y, UI
 
 void QXLDelSurface(PDev *pdev, UINT8 *base_mem, UINT8 allocation_type)
 {
-    if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM) {
+    switch (allocation_type) {
+    case DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM:
         FreeMem(pdev, MSPACE_TYPE_DEVRAM, base_mem);
-    }  else if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_VRAM) { // this wasn't there in the original code
-         FreeMem(pdev, MSPACE_TYPE_VRAM, base_mem);
+        break;
+    case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM:
+        FreeMem(pdev, MSPACE_TYPE_VRAM, base_mem);
+        break;
+    case DEVICE_BITMAP_ALLOCATION_TYPE_RAM:
+        EngFreeMem(base_mem);
+        break;
+    default:
+        PANIC(pdev, "bad allocation type");
     }
 }
 
@@ -829,18 +845,8 @@ static void FreeDelSurface(PDev *pdev, Resource *res)
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
     internal = (InternalDelSurface *)res->res;
-    switch (internal->allocation_type) {
-    case DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM:
-        FreeMem(pdev, MSPACE_TYPE_DEVRAM,
-                GetSurfaceInfo(pdev, internal->surface_id)->draw_area.base_mem);
-        break;
-    case DEVICE_BITMAP_ALLOCATION_TYPE_VRAM:
-        FreeMem(pdev, MSPACE_TYPE_VRAM,
-                GetSurfaceInfo(pdev, internal->surface_id)->draw_area.base_mem);
-        break;
-    default:
-        PANIC(pdev, "bad allocation type");
-    }
+    QXLDelSurface(pdev, GetSurfaceInfo(pdev, internal->surface_id)->draw_area.base_mem,
+        internal->allocation_type);
     FreeSurfaceInfo(pdev, internal->surface_id);
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
 

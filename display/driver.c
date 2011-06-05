@@ -1290,9 +1290,15 @@ VOID APIENTRY DrvDeleteDeviceBitmap(DHSURF dhsurf)
 {
     UINT32 surface_id;
     SurfaceInfo *surface;
+    PDev *pdev;
 
     surface = (SurfaceInfo *)dhsurf;
     surface_id = GetSurfaceIdFromInfo(surface);
+    pdev = surface->u.pdev;
+
+    DEBUG_PRINT((pdev, 3, "%s: %p: %d\n", __FUNCTION__, pdev, surface_id));
+
+    ASSERT(pdev, surface_id < pdev->n_surfaces);
 
     DeleteDeviceBitmap(surface->u.pdev, surface_id, DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
 }

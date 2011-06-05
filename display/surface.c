@@ -159,10 +159,19 @@ VOID DeleteDeviceBitmap(PDev *pdev, UINT32 surface_id, UINT8 allocation_type)
 
     if (allocation_type != DEVICE_BITMAP_ALLOCATION_TYPE_SURF0 &&
         pdev->Res->surfaces_info[surface_id].draw_area.base_mem != NULL) {
-        QXLSurfaceCmd *surface;
 
-        surface = SurfaceCmd(pdev, QXL_SURFACE_CMD_DESTROY, surface_id);
-        QXLGetDelSurface(pdev, surface, surface_id, allocation_type);
-        PushSurfaceCmd(pdev, surface);
+        if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_RAM) {
+            /* server side this surface is already destroyed, just free it here */
+            ASSERT(pdev, pdev->Res->surfaces_info[surface_id].draw_area.base_mem ==
+                pdev->Res->surfaces_info[surface_id].copy);
+            QXLDelSurface(pdev, pdev->Res->surfaces_info[surface_id].draw_area.base_mem,
+                allocation_type);
+            FreeSurfaceInfo(pdev, surface_id);
+        } else {
+            QXLSurfaceCmd *surface_cmd;
+            surface_cmd = SurfaceCmd(pdev, QXL_SURFACE_CMD_DESTROY, surface_id);
+            QXLGetDelSurface(pdev, surface_cmd, surface_id, allocation_type);
+            PushSurfaceCmd(pdev, surface_cmd);
+        }
     }
 }
