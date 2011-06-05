@@ -528,11 +528,42 @@ err1:
     return NULL;
 }
 
+#ifdef DBG
+static void DebugCountAliveSurfaces(PDev *pdev)
+{
+    UINT32 i;
+    SurfaceInfo *surface_info;
+    int total = 0;
+    int of_pdev = 0;
+    int no_surf_obj = 0;
+
+    for (i = 0 ; i < pdev->n_surfaces; ++i) {
+        surface_info = GetSurfaceInfo(pdev, i);
+        if (surface_info->draw_area.base_mem != NULL) {
+            total++;
+            if (surface_info->u.pdev == pdev) {
+                of_pdev++;
+                if (surface_info->draw_area.surf_obj == NULL) {
+                    no_surf_obj++;
+                }
+            }
+        }
+    }
+    DEBUG_PRINT((pdev, 1, "%s: %p: %d / %d / %d (total,pdev,no_surf_obj)\n", __FUNCTION__, pdev,
+                total, of_pdev, no_surf_obj));
+}
+#else
+static void DebugCountAliveSurfaces(PDev *pdev)
+{
+}
+#endif
+
 VOID DrvDisablePDEV(DHPDEV in_pdev)
 {
     PDev* pdev = (PDev*)in_pdev;
 
     DEBUG_PRINT((pdev, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
+    DebugCountAliveSurfaces(pdev);
     ResDestroy(pdev);
     DestroyPalette(pdev);
     EngFreeMem(pdev);
