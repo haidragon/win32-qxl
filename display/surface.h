@@ -41,6 +41,9 @@ static _inline UINT32 GetSurfaceId(SURFOBJ *surf)
 {
     SurfaceInfo *surface;
 
+    if (!surf || !surf->dhsurf) {
+        return (UINT32)-1;
+    }
     surface = (SurfaceInfo *)surf->dhsurf;
     return GetSurfaceIdFromInfo(surface);
 }
