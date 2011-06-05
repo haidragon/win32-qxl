@@ -1281,7 +1281,7 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
 
     // to optimize the failure case
 out_error2:
-    FreeSurface(pdev, surface_id);
+    FreeSurfaceInfo(pdev, surface_id);
 out_error:
     return 0;
 }

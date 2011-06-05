@@ -802,7 +802,7 @@ static void FreeDelSurface(PDev *pdev, Resource *res)
     default:
         PANIC(pdev, "bad allocation type");
     }
-    FreeSurface(pdev, internal->surface_id);
+    FreeSurfaceInfo(pdev, internal->surface_id);
     FreeMem(pdev, MSPACE_TYPE_DEVRAM, res);
 
     DEBUG_PRINT((pdev, 13, "%s: done\n", __FUNCTION__));

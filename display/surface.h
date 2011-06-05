@@ -30,7 +30,7 @@ static _inline UINT32 GetSurfaceId(SURFOBJ *surf)
     return GetSurfaceIdFromInfo(surface);
 }
 
-static _inline void FreeSurface(PDev *pdev, UINT32 surface_id)
+static _inline void FreeSurfaceInfo(PDev *pdev, UINT32 surface_id)
 {
     SurfaceInfo *surface;
 
