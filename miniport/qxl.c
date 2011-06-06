@@ -1003,10 +1003,12 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             }
             mem_info->FrameBufferBase = mem_info->VideoRamBase;
             mem_info->FrameBufferLength = mem_info->VideoRamLength;
+#if 0
 #ifdef DBG
             DEBUG_PRINT((dev, 0, "%s: zap\n", __FUNCTION__));
             VideoPortZeroMemory(mem_info->VideoRamBase, mem_info->VideoRamLength);
             DEBUG_PRINT((dev, 0, "%s: zap done\n", __FUNCTION__));
+#endif
 #endif
         }
         break;
