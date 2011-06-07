@@ -2885,7 +2885,7 @@ static void CursorCacheRemove(PDev *pdev, InternalCursor *cursor)
                 RingRemove(pdev, &cursor->lru_link);
                 RELEASE_RES(pdev, (Resource *)((UINT8 *)cursor - sizeof(Resource)));
                 pdev->Res->num_cursors--;
-                break;
+                return;
             }
             DEBUG_PRINT((pdev, 0, "%s: unexpected\n", __FUNCTION__));
         }
