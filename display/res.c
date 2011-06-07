@@ -1544,6 +1544,7 @@ static _inline void ReleasePalette(PDev *pdev, InternalPalette *palette)
 static _inline void PaletteCacheRemove(PDev *pdev, InternalPalette *palette)
 {
     InternalPalette **internal;
+    BOOL found = FALSE;
 
     DEBUG_PRINT((pdev, 15, "%s\n", __FUNCTION__));
 
@@ -1553,15 +1554,22 @@ static _inline void PaletteCacheRemove(PDev *pdev, InternalPalette *palette)
     while (*internal) {
         if ((*internal)->palette.unique == palette->palette.unique) {
             *internal = palette->next;
-            RingRemove(pdev, &palette->lru_link);
-            ReleasePalette(pdev, palette);
-            pdev->Res->num_palettes--;
-            DEBUG_PRINT((pdev, 16, "%s: done\n", __FUNCTION__));
-            return;
+            found = TRUE;
+            break;
         }
         internal = &(*internal)->next;
     }
-    ASSERT(pdev, FALSE);
+
+    RingRemove(pdev, &palette->lru_link);
+    ReleasePalette(pdev, palette);
+    pdev->Res->num_palettes--;
+
+    if (!found) {
+        DEBUG_PRINT((pdev, 0, "%s: Error: palette 0x%x isn't in cache \n", __FUNCTION__, palette));
+        ASSERT(pdev, FALSE);
+    } else {
+        DEBUG_PRINT((pdev, 16, "%s: done\n", __FUNCTION__));
+    }
 }
 
 static _inline InternalPalette *PaletteCacheGet(PDev *pdev, UINT32 unique)
@@ -2869,29 +2877,36 @@ typedef struct InternalCursor {
 static void CursorCacheRemove(PDev *pdev, InternalCursor *cursor)
 {
     InternalCursor **internal;
+    BOOL found = FALSE;
 
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
 
-    if (!cursor->unique) {
-        DEBUG_PRINT((pdev, 1, "%s: cursor not unique\n", __FUNCTION__));
-        return;
-    }
+    ASSERT(pdev, cursor->unique);
     internal = &pdev->Res->cursor_cache[CURSOR_HASH_VAL(cursor->hsurf)];
 
     while (*internal) {
         if ((*internal)->hsurf == cursor->hsurf) {
             if ((*internal) == cursor) {
                 *internal = cursor->next;
-                RingRemove(pdev, &cursor->lru_link);
-                RELEASE_RES(pdev, (Resource *)((UINT8 *)cursor - sizeof(Resource)));
-                pdev->Res->num_cursors--;
-                return;
+                found = TRUE;
+                break;
             }
             DEBUG_PRINT((pdev, 0, "%s: unexpected\n", __FUNCTION__));
         }
         internal = &(*internal)->next;
     }
-    DEBUG_PRINT((pdev, 0, "%s: Error: should not reach this\n", __FUNCTION__));
+
+    RingRemove(pdev, &cursor->lru_link);
+    RELEASE_RES(pdev, (Resource *)((UINT8 *)cursor - sizeof(Resource)));
+    pdev->Res->num_cursors--;
+
+    if (!found) {
+        DEBUG_PRINT((pdev, 0, "%s: Error: cursor 0x%x isn't in cache \n", __FUNCTION__, cursor));
+        ASSERT(pdev, FALSE);
+    } else {
+        DEBUG_PRINT((pdev, 16, "%s: done\n", __FUNCTION__));
+    }
+
 }
 
 static void CursorCacheAdd(PDev *pdev, InternalCursor *cursor)
