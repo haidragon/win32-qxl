@@ -265,6 +265,8 @@ static void WaitForCmdRing(PDev* pdev)
         if (!wait) {
             break;
         }
+        DEBUG_PRINT((pdev, 9, "%s: 0x%lx\n", __FUNCTION__, pdev));
+
 #ifdef DBG
         {
             LARGE_INTEGER timeout; // 1 => 100 nanoseconds
