@@ -718,13 +718,20 @@ void HWReset(QXLExtension *dev_ext);
 #pragma alloc_text(PAGE, HWReset)
 #endif
 
+/* called from HWReset or after returning from sleep from SetPowerState,
+ * when returning from sleep we don't want to do a redundant QXL_IO_RESET */
+static void ResetDeviceWithoutIO(QXLExtension *dev_ext)
+{
+    dev_ext->ram_header->int_mask = ~0;
+    CreateMemSlots(dev_ext);
+}
+
 void HWReset(QXLExtension *dev_ext)
 {
     PAGED_CODE();
     DEBUG_PRINT((0, "%s\n", __FUNCTION__));
     VideoPortWritePortUchar((PUCHAR)dev_ext->io_base + QXL_IO_RESET, 0);
-    dev_ext->ram_header->int_mask = ~0;
-    CreateMemSlots(dev_ext);
+    ResetDeviceWithoutIO(dev_ext);
     DEBUG_PRINT((0, "%s: done\n", __FUNCTION__));
 }
 
@@ -775,6 +782,8 @@ VP_STATUS SetPowerState(PVOID dev_extension,
     case DISPLAY_ADAPTER_HW_ID:
         switch (pm_stat->PowerState) {
         case VideoPowerOn:
+            ResetDeviceWithoutIO(dev_ext);
+            break;
         case VideoPowerStandBy:
         case VideoPowerSuspend:
         case VideoPowerOff:
