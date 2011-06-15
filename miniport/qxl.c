@@ -771,10 +771,29 @@ VP_STATUS GetPowerState(PVOID dev_extension,
     return ERROR_DEVICE_REINITIALIZATION_NEEDED;
 }
 
+#ifdef DBG
+static void DebugZeroDeviceMemory(QXLExtension *dev_ext)
+{
+    // don't zero the memory if the ram_start and vram_start are not initialized (a
+    // device has been installed but the monitor is disabled)
+    if (dev_ext->ram_start == 0 || dev_ext->vram_start == 0) {
+        DEBUG_PRINT((dev_ext, 0, "%s: not zeroing memory (addresses not initialized)\n", __FUNCTION__));
+        return;
+    }
+    VideoPortZeroMemory(dev_ext->ram_start, dev_ext->ram_size);
+    VideoPortZeroMemory(dev_ext->vram_start, dev_ext->vram_size);
+}
+#else
+static _inline void DebugZeroDeviceMemory(QXLExtension *dev_ext)
+{
+}
+#endif
+
 VP_STATUS SetPowerState(PVOID dev_extension,
                         ULONG hw_id,
                         PVIDEO_POWER_MANAGEMENT pm_stat)
 {
+    QXLExtension *dev_ext = dev_extension;
     PAGED_CODE();
     DEBUG_PRINT((0, "%s: %lu\n", __FUNCTION__, pm_stat->PowerState));
 
@@ -785,19 +804,28 @@ VP_STATUS SetPowerState(PVOID dev_extension,
             ResetDeviceWithoutIO(dev_ext);
             break;
         case VideoPowerStandBy:
+            break;
         case VideoPowerSuspend:
+            break;
         case VideoPowerOff:
+            DebugZeroDeviceMemory(dev_ext);
+            break;
         case VideoPowerShutdown:
+            /* Important: you cannot call out to qxldd.dll here or you get a BSOD. */
+            break;
         case VideoPowerHibernate:
-            DEBUG_PRINT((0, "%s: OK\n", __FUNCTION__));
-            return NO_ERROR;
+            DebugZeroDeviceMemory(dev_ext);
+            break;
+        default:
+            DEBUG_PRINT((0, "%s: unexpected power state\n", __FUNCTION__));
+            return ERROR_DEVICE_REINITIALIZATION_NEEDED;
         }
         break;
     default:
         DEBUG_PRINT((0, "%s: unexpected hw_id %lu\n", __FUNCTION__, hw_id));
+        return ERROR_DEVICE_REINITIALIZATION_NEEDED;
     }
-    DEBUG_PRINT((0, "%s: ERROR_DEVICE_REINITIALIZATION_NEEDED\n", __FUNCTION__));
-    return ERROR_DEVICE_REINITIALIZATION_NEEDED;
+    return NO_ERROR;
 }
 
 VP_STATUS GetChildDescriptor(IN PVOID dev_extension,
