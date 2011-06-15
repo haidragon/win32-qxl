@@ -386,8 +386,15 @@ static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size, BOOL force)
     UINT8 *ptr;
 
     ASSERT(pdev, pdev && pdev->Res->mspaces[mspace_type]._mspace);
-    DEBUG_PRINT((pdev, 12, "%s: 0x%lx size %u\n", __FUNCTION__, pdev, size));
-
+    DEBUG_PRINT((pdev, 12, "%s: 0x%lx %p(%d) size %u\n", __FUNCTION__, pdev,
+        pdev->Res->mspaces[mspace_type]._mspace,
+        mspace_footprint(pdev->Res->mspaces[mspace_type]._mspace),
+        size));
+#ifdef DBG
+    if (pdev && pdev->log_level && *pdev->log_level > 11) {
+        mspace_malloc_stats(pdev->Res->mspaces[mspace_type]._mspace);
+    }
+#endif
     EngAcquireSemaphore(pdev->Res->malloc_sem);
 
     while (1) {
