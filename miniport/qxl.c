@@ -428,7 +428,7 @@ VP_STATUS SetVideoModeInfo(QXLExtension *dev, PVIDEO_MODE_INFORMATION video_mode
 {
     ULONG color_bits;
     PAGED_CODE();
-    DEBUG_PRINT((dev, 0, "%s: x %u y %u bits %u stride %u orientation %u\n",
+    DEBUG_PRINT((dev, 5, "%s: x %u y %u bits %u stride %u orientation %u\n",
                  __FUNCTION__, qxl_mode->x_res, qxl_mode->y_res,
                  qxl_mode->bits, qxl_mode->stride, qxl_mode->orientation));
 
@@ -455,7 +455,7 @@ VP_STATUS SetVideoModeInfo(QXLExtension *dev, PVIDEO_MODE_INFORMATION video_mode
     video_mode->VideoMemoryBitmapWidth = qxl_mode->x_res;
     video_mode->VideoMemoryBitmapHeight = qxl_mode->y_res;
     video_mode->DriverSpecificAttributeFlags = qxl_mode->orientation;
-    DEBUG_PRINT((dev, 0, "%s OK\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 5, "%s OK\n", __FUNCTION__));
     return NO_ERROR;
 }
 
