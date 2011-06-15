@@ -420,11 +420,11 @@ VP_STATUS Prob(QXLExtension *dev, VIDEO_PORT_CONFIG_INFO *conf_info,
 }
 
 #if defined(ALLOC_PRAGMA)
-VP_STATUS SetVideoModeInfo(PVIDEO_MODE_INFORMATION video_mode, QXLMode *qxl_mode);
+VP_STATUS SetVideoModeInfo(QXLExtension *dev, PVIDEO_MODE_INFORMATION video_mode, QXLMode *qxl_mode);
 #pragma alloc_text(PAGE, SetVideoModeInfo)
 #endif
 
-VP_STATUS SetVideoModeInfo(PVIDEO_MODE_INFORMATION video_mode, QXLMode *qxl_mode)
+VP_STATUS SetVideoModeInfo(QXLExtension *dev, PVIDEO_MODE_INFORMATION video_mode, QXLMode *qxl_mode)
 {
     ULONG color_bits;
     PAGED_CODE();
@@ -530,7 +530,7 @@ VP_STATUS InitModes(QXLExtension *dev)
 #endif
     VideoPortZeroMemory(modes_info, sizeof(VIDEO_MODE_INFORMATION) * n_modes);
     for (i = 0; i < n_modes; i++) {
-        error = SetVideoModeInfo(&modes_info[i], &modes->modes[i]);
+        error = SetVideoModeInfo(dev, &modes_info[i], &modes->modes[i]);
         if (error != NO_ERROR) {
             VideoPortFreePool(dev, modes_info);
             DEBUG_PRINT((dev, 0, "%s: set video mode failed\n", __FUNCTION__));
