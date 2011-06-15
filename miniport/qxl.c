@@ -142,7 +142,7 @@ ULONG DriverEntry(PVOID context1, PVOID context2)
 
     PAGED_CODE();
 
-    DEBUG_PRINT((0, "%s: enter\n", __FUNCTION__));
+    DEBUG_PRINT((NULL, 0, "%s: enter\n", __FUNCTION__));
 
     VideoPortZeroMemory(&init_data, sizeof(VIDEO_HW_INITIALIZATION_DATA));
     init_data.HwInitDataSize = sizeof(VIDEO_HW_INITIALIZATION_DATA);
@@ -159,11 +159,11 @@ ULONG DriverEntry(PVOID context1, PVOID context2)
     ret = VideoPortInitialize(context1, context2, &init_data, NULL);
 
     if (ret != NO_ERROR) {
-        DEBUG_PRINT((0, "%s: try W2K %u\n", __FUNCTION__, ret));
+        DEBUG_PRINT((NULL, 0, "%s: try W2K %u\n", __FUNCTION__, ret));
         init_data.HwInitDataSize = SIZE_OF_W2K_VIDEO_HW_INITIALIZATION_DATA;
         ret = VideoPortInitialize(context1, context2, &init_data, NULL);
     }
-    DEBUG_PRINT((0, "%s: exit %u\n", __FUNCTION__, ret));
+    DEBUG_PRINT((NULL, 0, "%s: exit %u\n", __FUNCTION__, ret));
     return ret;
 }
 
@@ -178,11 +178,11 @@ VP_STATUS InitIO(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
     PVOID io_base;
 
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s\n", __FUNCTION__));
 
     if (range->RangeLength < QXL_IO_RANGE_SIZE
         || !range->RangeInIoSpace) {
-        DEBUG_PRINT((0, "%s: bad io range\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: bad io range\n", __FUNCTION__));
         return ERROR_INVALID_DATA;
     }
 
@@ -190,7 +190,7 @@ VP_STATUS InitIO(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
                                      range->RangeInIoSpace);
 
     if (!io_base) {
-        DEBUG_PRINT((0, "%s: get io base failed\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: get io base failed\n", __FUNCTION__));
         return ERROR_NOT_ENOUGH_MEMORY;
     }
 
@@ -216,40 +216,40 @@ VP_STATUS InitRom(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
     VP_STATUS error;
 
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s\n", __FUNCTION__));
 
     if (rom_size < sizeof(QXLRom) || range->RangeInIoSpace) {
-        DEBUG_PRINT((0, "%s: bad rom range\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: bad rom range\n", __FUNCTION__));
         return ERROR_INVALID_DATA;
     }
     if ((error = VideoPortMapMemory(dev, range->RangeStart,
                                     &rom_size, &io_space,
                                     &rom)) != NO_ERROR ) {
-        DEBUG_PRINT((0, "%s: map rom filed\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: map rom filed\n", __FUNCTION__));
         return error;
     }
 
     if (rom_size < range->RangeLength) {
-        DEBUG_PRINT((0, "%s: short rom map\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: short rom map\n", __FUNCTION__));
         error = ERROR_NOT_ENOUGH_MEMORY;
         goto err;
     }
 
     if (((QXLRom*)rom)->magic != QXL_ROM_MAGIC) {
-        DEBUG_PRINT((0, "%s: bad rom magic\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: bad rom magic\n", __FUNCTION__));
         error = ERROR_INVALID_DATA;
         goto err;
     }
 
     dev->rom = rom;
     dev->rom_size = range->RangeLength;
-    DEBUG_PRINT((0, "%s OK: rom 0x%lx size %lu\n",
+    DEBUG_PRINT((dev, 0, "%s OK: rom 0x%lx size %lu\n",
                  __FUNCTION__, (ULONG)range->RangeStart.QuadPart, range->RangeLength));
     return NO_ERROR;
 
 err:
     VideoPortUnmapMemory(dev, rom, NULL);
-    DEBUG_PRINT((0, "%s ERR\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s ERR\n", __FUNCTION__));
     return error;
 }
 
@@ -267,33 +267,33 @@ VP_STATUS InitRam(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
     VP_STATUS error;
 
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s\n", __FUNCTION__));
 
     if (ram_size < sizeof(QXLRam) + dev->rom->ram_header_offset || range->RangeInIoSpace) {
-        DEBUG_PRINT((0, "%s: bad ram range\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: bad ram range\n", __FUNCTION__));
         return ERROR_INVALID_DATA;
     }
 
     if (ram_size < dev->rom->num_pages << PAGE_SHIFT) {
-        DEBUG_PRINT((0, "%s: bad ram size\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: bad ram size\n", __FUNCTION__));
         return ERROR_INVALID_DATA;
     }
 
     if ((error = VideoPortMapMemory(dev, range->RangeStart,
                                     &ram_size, &io_space,
                                     &ram)) != NO_ERROR ) {
-        DEBUG_PRINT((0, "%s: map ram filed\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: map ram filed\n", __FUNCTION__));
         return error;
     }
 
     if (ram_size < range->RangeLength) {
-        DEBUG_PRINT((0, "%s: short ram map\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: short ram map\n", __FUNCTION__));
         error = ERROR_NOT_ENOUGH_MEMORY;
         goto err;
     }
     ram_header = (QXLRam *)(ram + dev->rom->ram_header_offset);
     if (ram_header->magic != QXL_RAM_MAGIC) {
-        DEBUG_PRINT((0, "%s: bad ram magic\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: bad ram magic\n", __FUNCTION__));
         error = ERROR_INVALID_DATA;
         goto err;
     }
@@ -309,7 +309,7 @@ VP_STATUS InitRam(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
 
     err:
     VideoPortUnmapMemory(dev, ram, NULL);
-    DEBUG_PRINT((0, "%s ERR\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s ERR\n", __FUNCTION__));
     return error;
 }
 
@@ -322,16 +322,16 @@ VP_STATUS InitVRAM(QXLExtension *dev, PVIDEO_ACCESS_RANGE range);
 VP_STATUS InitVRAM(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
 {
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s\n", __FUNCTION__));
 
     if (range->RangeLength == 0 || range->RangeInIoSpace) {
-        DEBUG_PRINT((0, "%s: bad mem range\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: bad mem range\n", __FUNCTION__));
         return ERROR_INVALID_DATA;
     }
 
     dev->vram_physical = range->RangeStart;
     dev->vram_size = range->RangeLength;
-    DEBUG_PRINT((0, "%s: OK, vram 0x%lx size %lu\n",
+    DEBUG_PRINT((dev, 0, "%s: OK, vram 0x%lx size %lu\n",
                  __FUNCTION__, (ULONG)range->RangeStart.QuadPart, range->RangeLength));
     return NO_ERROR;
 }
@@ -350,7 +350,7 @@ VP_STATUS Prob(QXLExtension *dev, VIDEO_PORT_CONFIG_INFO *conf_info,
     VP_STATUS error;
 
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s\n", __FUNCTION__));
 
     bus_data_size = VideoPortGetBusData(dev,
                                         PCIConfiguration,
@@ -360,25 +360,25 @@ VP_STATUS Prob(QXLExtension *dev, VIDEO_PORT_CONFIG_INFO *conf_info,
                                         sizeof(PCI_COMMON_CONFIG));
 
     if (bus_data_size != sizeof(PCI_COMMON_CONFIG)) {
-        DEBUG_PRINT((0,  "%s: GetBusData size %d expectes %d\n",
+        DEBUG_PRINT((dev, 0,  "%s: GetBusData size %d expectes %d\n",
                      __FUNCTION__, bus_data_size, sizeof(PCI_COMMON_CONFIG)));
         return ERROR_INVALID_PARAMETER;
     }
 
     if (pci_conf.VendorID != REDHAT_PCI_VENDOR_ID) {
-        DEBUG_PRINT((0,  "%s: bad vendor id 0x%x expectes 0x%x\n",
+        DEBUG_PRINT((dev, 0,  "%s: bad vendor id 0x%x expectes 0x%x\n",
                      __FUNCTION__, pci_conf.VendorID, REDHAT_PCI_VENDOR_ID));
         return ERROR_INVALID_PARAMETER;
     }
 
     if (pci_conf.DeviceID != QXL_DEVICE_ID_STABLE) {
-        DEBUG_PRINT((0,  "%s: bad vendor id 0x%x expectes 0x%x\n",
+        DEBUG_PRINT((dev, 0,  "%s: bad vendor id 0x%x expectes 0x%x\n",
                      __FUNCTION__, pci_conf.DeviceID, QXL_DEVICE_ID_STABLE));
         return ERROR_INVALID_PARAMETER;
     }
 
     if (pci_conf.RevisionID < QXL_REVISION_STABLE_V06) {
-        DEBUG_PRINT((0,  "%s: bad revision 0x%x expectes at least 0x%x\n",
+        DEBUG_PRINT((dev, 0,  "%s: bad revision 0x%x expectes at least 0x%x\n",
                      __FUNCTION__, pci_conf.RevisionID, QXL_REVISION_STABLE_V06));
         return ERROR_INVALID_PARAMETER;
     }
@@ -388,11 +388,11 @@ VP_STATUS Prob(QXLExtension *dev, VIDEO_PORT_CONFIG_INFO *conf_info,
     if ((error = VideoPortGetAccessRanges(dev, 0, NULL, n_ranges,
                                           ranges, NULL, NULL,
                                           NULL)) != NO_ERROR ) {
-        DEBUG_PRINT((0, "%s: get access ranges failed status %u\n", __FUNCTION__, error));
+        DEBUG_PRINT((dev, 0, "%s: get access ranges failed status %u\n", __FUNCTION__, error));
     }
 
     if (conf_info->BusInterruptLevel == 0 && conf_info->BusInterruptVector == 0) {
-        DEBUG_PRINT((0, "%s: no interrupt\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: no interrupt\n", __FUNCTION__));
         error = ERROR_INVALID_DATA;
     }
 
@@ -400,14 +400,14 @@ VP_STATUS Prob(QXLExtension *dev, VIDEO_PORT_CONFIG_INFO *conf_info,
     if (error == NO_ERROR) {
         int i;
 
-        DEBUG_PRINT((0, "%s: interrupt: vector %lu level %lu mode %s\n",
+        DEBUG_PRINT((dev, 0, "%s: interrupt: vector %lu level %lu mode %s\n",
                      __FUNCTION__,
                      conf_info->BusInterruptVector,
                      conf_info->BusInterruptLevel,
                      (conf_info->InterruptMode == LevelSensitive) ? "LevelSensitive" : "Latched"));
 
         for (i = 0; i < n_ranges; i++) {
-            DEBUG_PRINT((0, "%s: range %d start 0x%lx length %lu space %lu\n", __FUNCTION__, i,
+            DEBUG_PRINT((dev, 0, "%s: range %d start 0x%lx length %lu space %lu\n", __FUNCTION__, i,
                          (ULONG)ranges[i].RangeStart.QuadPart,
                          ranges[i].RangeLength,
                          (ULONG)ranges[i].RangeInIoSpace));
@@ -415,7 +415,7 @@ VP_STATUS Prob(QXLExtension *dev, VIDEO_PORT_CONFIG_INFO *conf_info,
     }
 #endif
 
-    DEBUG_PRINT((0, "%s exit %lu\n", __FUNCTION__, error));
+    DEBUG_PRINT((dev, 0, "%s exit %lu\n", __FUNCTION__, error));
     return error;
 }
 
@@ -428,7 +428,7 @@ VP_STATUS SetVideoModeInfo(PVIDEO_MODE_INFORMATION video_mode, QXLMode *qxl_mode
 {
     ULONG color_bits;
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s: x %u y %u bits %u stride %u orientation %u\n",
+    DEBUG_PRINT((dev, 0, "%s: x %u y %u bits %u stride %u orientation %u\n",
                  __FUNCTION__, qxl_mode->x_res, qxl_mode->y_res,
                  qxl_mode->bits, qxl_mode->stride, qxl_mode->orientation));
 
@@ -455,7 +455,7 @@ VP_STATUS SetVideoModeInfo(PVIDEO_MODE_INFORMATION video_mode, QXLMode *qxl_mode
     video_mode->VideoMemoryBitmapWidth = qxl_mode->x_res;
     video_mode->VideoMemoryBitmapHeight = qxl_mode->y_res;
     video_mode->DriverSpecificAttributeFlags = qxl_mode->orientation;
-    DEBUG_PRINT((0, "%s OK\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s OK\n", __FUNCTION__));
     return NO_ERROR;
 }
 
@@ -485,7 +485,7 @@ VP_STATUS InitMemSlots(QXLExtension *dev)
     if (!(dev->mem_slots = VideoPortAllocatePool(dev, VpPagedPool,
                                                  dev->rom->slots_end * sizeof(MemSlot),
                                                  QXL_ALLOC_TAG))) {
-        DEBUG_PRINT((0, "%s: alloc mem failed\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: alloc mem failed\n", __FUNCTION__));
         return ERROR_NOT_ENOUGH_MEMORY;
     }
 #endif
@@ -504,13 +504,13 @@ VP_STATUS InitModes(QXLExtension *dev)
     VP_STATUS error;
 
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s\n", __FUNCTION__));
     rom = dev->rom;
     modes = (QXLModes *)((UCHAR*)rom + rom->modes_offset);
     if (dev->rom_size < rom->modes_offset + sizeof(QXLModes) ||
         (n_modes = modes->n_modes) == 0 || dev->rom_size <
         rom->modes_offset + sizeof(QXLModes) + n_modes * sizeof(QXLMode)) {
-        DEBUG_PRINT((0, "%s: bad rom size\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: bad rom size\n", __FUNCTION__));
         return ERROR_INVALID_DATA;
     }
 
@@ -524,7 +524,7 @@ VP_STATUS InitModes(QXLExtension *dev)
     if (!(modes_info = VideoPortAllocatePool(dev, VpPagedPool,
                                              n_modes * sizeof(VIDEO_MODE_INFORMATION),
                                              QXL_ALLOC_TAG))) {
-        DEBUG_PRINT((0, "%s: alloc mem failed\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: alloc mem failed\n", __FUNCTION__));
         return ERROR_NOT_ENOUGH_MEMORY;
     }
 #endif
@@ -533,13 +533,13 @@ VP_STATUS InitModes(QXLExtension *dev)
         error = SetVideoModeInfo(&modes_info[i], &modes->modes[i]);
         if (error != NO_ERROR) {
             VideoPortFreePool(dev, modes_info);
-            DEBUG_PRINT((0, "%s: set video mode failed\n", __FUNCTION__));
+            DEBUG_PRINT((dev, 0, "%s: set video mode failed\n", __FUNCTION__));
             return error;
         }
     }
     dev->n_modes = n_modes;
     dev->modes = modes_info;
-    DEBUG_PRINT((0, "%s OK\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s OK\n", __FUNCTION__));
     return NO_ERROR;
 }
 
@@ -604,45 +604,45 @@ VP_STATUS FindAdapter(PVOID dev_extension,
 
     PAGED_CODE();
 
-    DEBUG_PRINT((0, "%s: enter\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s: enter\n", __FUNCTION__));
 
 #if (WINVER >= 0x0501)
     VideoPortZeroMemory(&sys_info, sizeof(VPOSVERSIONINFO));
     sys_info.Size = sizeof(VPOSVERSIONINFO);
     if ((status = VideoPortGetVersion(dev_ext, &sys_info)) != NO_ERROR ||
         sys_info.MajorVersion < 5 || (sys_info.MajorVersion == 5 && sys_info.MinorVersion < 1) ) {
-        DEBUG_PRINT((0, "%s: err not supported, status %lu major %lu minor %lu\n",
+        DEBUG_PRINT((dev_ext, 0, "%s: err not supported, status %lu major %lu minor %lu\n",
                      __FUNCTION__, status, sys_info.MajorVersion, sys_info.MinorVersion));
         return ERROR_NOT_SUPPORTED;
     }
 #endif
 
     if (conf_info->Length < sizeof(VIDEO_PORT_CONFIG_INFO)) {
-        DEBUG_PRINT((0, "%s: err configInfo size\n", __FUNCTION__));
+        DEBUG_PRINT((dev_ext, 0, "%s: err configInfo size\n", __FUNCTION__));
         return ERROR_INVALID_PARAMETER;
     }
 
     if (conf_info->AdapterInterfaceType != PCIBus) {
-        DEBUG_PRINT((0,  "%s: not a PCI device %d\n",
+        DEBUG_PRINT((dev_ext, 0,  "%s: not a PCI device %d\n",
                      __FUNCTION__, conf_info->AdapterInterfaceType));
         return ERROR_DEV_NOT_EXIST;
     }
 
     if ((status = VideoPortCreateEvent(dev_ext, 0, NULL, &display_event)) != NO_ERROR) {
-        DEBUG_PRINT((0,  "%s: create display event failed %lu\n",
+        DEBUG_PRINT((dev_ext, 0,  "%s: create display event failed %lu\n",
                      __FUNCTION__, status));
         return status;
     }
 
     if ((status = VideoPortCreateEvent(dev_ext, 0, NULL, &cursor_event)) != NO_ERROR) {
-        DEBUG_PRINT((0,  "%s: create cursor event failed %lu\n",
+        DEBUG_PRINT((dev_ext, 0,  "%s: create cursor event failed %lu\n",
                      __FUNCTION__, status));
         VideoPortDeleteEvent(dev_ext, display_event);
         return status;
     }
 
     if ((status = VideoPortCreateEvent(dev_ext, 0, NULL, &sleep_event)) != NO_ERROR) {
-        DEBUG_PRINT((0,  "%s: create sleep event failed %lu\n",
+        DEBUG_PRINT((dev_ext, 0,  "%s: create sleep event failed %lu\n",
                      __FUNCTION__, status));
         VideoPortDeleteEvent(dev_ext, display_event);
         VideoPortDeleteEvent(dev_ext, cursor_event);
@@ -650,7 +650,7 @@ VP_STATUS FindAdapter(PVOID dev_extension,
     }
 
     if ((status = VideoPortCreateEvent(dev_ext, 0, NULL, &io_cmd_event)) != NO_ERROR) {
-        DEBUG_PRINT((0,  "%s: create io_cmd event failed %lu\n",
+        DEBUG_PRINT((dev_ext, 0,  "%s: create io_cmd event failed %lu\n",
                      __FUNCTION__, status));
         VideoPortDeleteEvent(dev_ext, sleep_event);
         VideoPortDeleteEvent(dev_ext, display_event);
@@ -670,16 +670,16 @@ VP_STATUS FindAdapter(PVOID dev_extension,
         (status = InitVRAM(dev_ext, &ranges[QXL_VRAM_RANGE_INDEX])) != NO_ERROR ||
         (status = InitModes(dev_ext)) != NO_ERROR ||
         (status = InitMemSlots(dev_ext)) != NO_ERROR) {
-        DEBUG_PRINT((0,  "%s: findAdapter failed\n", __FUNCTION__));
+        DEBUG_PRINT((dev_ext, 0,  "%s: findAdapter failed\n", __FUNCTION__));
         DevExternsionCleanup(dev_ext);
     }
 
     if (VideoPortSetRegistryParameters(dev_extension, L"QxlDeviceID",
                                        &dev_ext->rom->id, sizeof(UINT32)) != NO_ERROR) {
-        DEBUG_PRINT((0, "%s: write QXL ID failed\n", __FUNCTION__));
+        DEBUG_PRINT((dev_ext, 0, "%s: write QXL ID failed\n", __FUNCTION__));
     }
 
-    DEBUG_PRINT((0, "%s: exit %lu\n", __FUNCTION__, status));
+    DEBUG_PRINT((dev_ext, 0, "%s: exit %lu\n", __FUNCTION__, status));
     return status;
 }
 
@@ -689,7 +689,7 @@ static BOOLEAN CreateMemSlots(QXLExtension *dev_ext)
     UINT8 slot_id = dev_ext->rom->slots_start;
 
     if (slot_id >= dev_ext->rom->slots_end) {
-        DEBUG_PRINT((0, "%s: start_memslot bigger than nmem_slot\n", __FUNCTION__));
+        DEBUG_PRINT((dev_ext, 0, "%s: start_memslot bigger than nmem_slot\n", __FUNCTION__));
         return FALSE;
     }
 
@@ -729,18 +729,18 @@ static void ResetDeviceWithoutIO(QXLExtension *dev_ext)
 void HWReset(QXLExtension *dev_ext)
 {
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s\n", __FUNCTION__));
     VideoPortWritePortUchar((PUCHAR)dev_ext->io_base + QXL_IO_RESET, 0);
     ResetDeviceWithoutIO(dev_ext);
-    DEBUG_PRINT((0, "%s: done\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s: done\n", __FUNCTION__));
 }
 
 BOOLEAN Initialize(PVOID dev_ext)
 {
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s: enter\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s: enter\n", __FUNCTION__));
     HWReset(dev_ext);
-    DEBUG_PRINT((0, "%s: done\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s: done\n", __FUNCTION__));
     return TRUE;
 }
 
@@ -748,8 +748,9 @@ VP_STATUS GetPowerState(PVOID dev_extension,
                         ULONG hw_id,
                         PVIDEO_POWER_MANAGEMENT pm_stat)
 {
+    QXLExtension *dev = dev_extension;
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s: %lu\n", __FUNCTION__, pm_stat->PowerState));
+    DEBUG_PRINT((dev, 0, "%s: %lu\n", __FUNCTION__, pm_stat->PowerState));
 
     switch (hw_id) {
     case DISPLAY_ADAPTER_HW_ID:
@@ -760,14 +761,14 @@ VP_STATUS GetPowerState(PVOID dev_extension,
         case VideoPowerOff:
         case VideoPowerShutdown:
         case VideoPowerHibernate:
-            DEBUG_PRINT((0, "%s: OK\n", __FUNCTION__));
+            DEBUG_PRINT((dev, 0, "%s: OK\n", __FUNCTION__));
             return NO_ERROR;
         }
         break;
     default:
-        DEBUG_PRINT((0, "%s: unexpected hw_id %lu\n", __FUNCTION__, hw_id));
+        DEBUG_PRINT((dev, 0, "%s: unexpected hw_id %lu\n", __FUNCTION__, hw_id));
     }
-    DEBUG_PRINT((0, "%s: ERROR_DEVICE_REINITIALIZATION_NEEDED\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s: ERROR_DEVICE_REINITIALIZATION_NEEDED\n", __FUNCTION__));
     return ERROR_DEVICE_REINITIALIZATION_NEEDED;
 }
 
@@ -795,7 +796,7 @@ VP_STATUS SetPowerState(PVOID dev_extension,
 {
     QXLExtension *dev_ext = dev_extension;
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s: %lu\n", __FUNCTION__, pm_stat->PowerState));
+    DEBUG_PRINT((dev_ext, 0, "%s (%d): %d: %lu\n", __FUNCTION__, dev_ext->rom->id, hw_id, pm_stat->PowerState));
 
     switch (hw_id) {
     case DISPLAY_ADAPTER_HW_ID:
@@ -817,12 +818,12 @@ VP_STATUS SetPowerState(PVOID dev_extension,
             DebugZeroDeviceMemory(dev_ext);
             break;
         default:
-            DEBUG_PRINT((0, "%s: unexpected power state\n", __FUNCTION__));
+            DEBUG_PRINT((dev_ext, 0, "%s: unexpected power state\n", __FUNCTION__));
             return ERROR_DEVICE_REINITIALIZATION_NEEDED;
         }
         break;
     default:
-        DEBUG_PRINT((0, "%s: unexpected hw_id %lu\n", __FUNCTION__, hw_id));
+        DEBUG_PRINT((dev_ext, 0, "%s: unexpected hw_id %lu\n", __FUNCTION__, hw_id));
         return ERROR_DEVICE_REINITIALIZATION_NEEDED;
     }
     return NO_ERROR;
@@ -835,15 +836,16 @@ VP_STATUS GetChildDescriptor(IN PVOID dev_extension,
                              OUT PULONG uid,
                              OUT PULONG unused)
 {
+    QXLExtension *dev = dev_extension;
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s: enter\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s: enter\n", __FUNCTION__));
 
     switch (enum_info->ChildIndex) {
     case 0:
-        DEBUG_PRINT((0, "%s: ACPI id %u\n", __FUNCTION__, enum_info->ACPIHwId));
+        DEBUG_PRINT((dev, 0, "%s: ACPI id %u\n", __FUNCTION__, enum_info->ACPIHwId));
         return ERROR_NO_MORE_DEVICES;
     case 1:
-        DEBUG_PRINT((0, "%s: Monitor\n", __FUNCTION__));
+        DEBUG_PRINT((dev, 0, "%s: Monitor\n", __FUNCTION__));
         /*
         *pChildType = Monitor;
         todo: handle EDID
@@ -851,7 +853,7 @@ VP_STATUS GetChildDescriptor(IN PVOID dev_extension,
         */
         return ERROR_NO_MORE_DEVICES;
     }
-    DEBUG_PRINT((0, "%s: ERROR_NO_MORE_DEVICES\n", __FUNCTION__));
+    DEBUG_PRINT((dev, 0, "%s: ERROR_NO_MORE_DEVICES\n", __FUNCTION__));
     return ERROR_NO_MORE_DEVICES;
 }
 
@@ -868,19 +870,19 @@ PVIDEO_MODE_INFORMATION FindMode(QXLExtension *dev_ext, ULONG mode)
     VIDEO_MODE_INFORMATION *end;
 
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s\n", __FUNCTION__));
 
     inf = dev_ext->modes;
     end = inf + dev_ext->n_modes;
     for (; inf < end; inf++) {
         if (inf->ModeIndex == mode) {
-            DEBUG_PRINT((0, "%s: OK mode %lu res %lu-%lu orientation %lu\n", __FUNCTION__,
+            DEBUG_PRINT((dev_ext, 0, "%s: OK mode %lu res %lu-%lu orientation %lu\n", __FUNCTION__,
                          mode, inf->VisScreenWidth, inf->VisScreenHeight,
                          inf->DriverSpecificAttributeFlags ));
             return inf;
         }
     }
-    DEBUG_PRINT((0, "%s: mod info not found\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s: mod info not found\n", __FUNCTION__));
     return NULL;
 }
 
@@ -890,11 +892,11 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
     VP_STATUS error;
 
     PAGED_CODE();
-    DEBUG_PRINT((0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s\n", __FUNCTION__));
 
     switch (packet->IoControlCode) {
     case IOCTL_VIDEO_QUERY_NUM_AVAIL_MODES:
-        DEBUG_PRINT((0, "%s: IOCTL_VIDEO_QUERY_NUM_AVAIL_MODES\n", __FUNCTION__));
+        DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_QUERY_NUM_AVAIL_MODES\n", __FUNCTION__));
         if (packet->OutputBufferLength < (packet->StatusBlock->Information =
                                           sizeof(VIDEO_NUM_MODES))) {
             error = ERROR_INSUFFICIENT_BUFFER;
@@ -909,7 +911,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             VIDEO_MODE_INFORMATION *end;
             VIDEO_MODE_INFORMATION *out;
 
-            DEBUG_PRINT((0, "%s: IOCTL_VIDEO_QUERY_AVAIL_MODES\n", __FUNCTION__));
+            DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_QUERY_AVAIL_MODES\n", __FUNCTION__));
             if (packet->OutputBufferLength < (packet->StatusBlock->Information =
                                               dev_ext->n_modes * sizeof(VIDEO_MODE_INFORMATION))) {
                 error = ERROR_INSUFFICIENT_BUFFER;
@@ -925,7 +927,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
         break;
     case IOCTL_VIDEO_SET_CURRENT_MODE: {
             ULONG request_mode;
-            DEBUG_PRINT((0, "%s: IOCTL_VIDEO_SET_CURRENT_MODE\n", __FUNCTION__));
+            DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_SET_CURRENT_MODE\n", __FUNCTION__));
             if (packet->InputBufferLength < sizeof(VIDEO_MODE)) {
                 error = ERROR_INSUFFICIENT_BUFFER;
                 goto err;
@@ -933,7 +935,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             request_mode = ((PVIDEO_MODE)packet->InputBuffer)->RequestedMode;
 
             dev_ext->current_mode = request_mode;
-            DEBUG_PRINT((0, "%s: mode %u\n", __FUNCTION__, request_mode));
+            DEBUG_PRINT((dev_ext, 0, "%s: mode %u\n", __FUNCTION__, request_mode));
             if (!IsValidMode(dev_ext, request_mode)) {
                 error = ERROR_INVALID_PARAMETER;
                 goto err;
@@ -943,7 +945,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
     case IOCTL_VIDEO_QUERY_CURRENT_MODE: {
             PVIDEO_MODE_INFORMATION inf;
 
-            DEBUG_PRINT((0, "%s: IOCTL_VIDEO_QUERY_CURRENT_MODE\n", __FUNCTION__));
+            DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_QUERY_CURRENT_MODE\n", __FUNCTION__));
 
             if (packet->OutputBufferLength < (packet->StatusBlock->Information =
                                               sizeof(VIDEO_MODE_INFORMATION))) {
@@ -952,7 +954,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             }
 
             if ((inf = FindMode(dev_ext, dev_ext->current_mode)) == NULL) {
-                DEBUG_PRINT((0, "%s: mod info not found\n", __FUNCTION__));
+                DEBUG_PRINT((dev_ext, 0, "%s: mod info not found\n", __FUNCTION__));
                 error = ERROR_INVALID_DATA;
                 goto err;
             }
@@ -963,7 +965,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             PVIDEO_MEMORY_INFORMATION mem_info;
             ULONG fb_io_space;
 
-            DEBUG_PRINT((0, "%s: IOCTL_VIDEO_MAP_VIDEO_MEMORY\n", __FUNCTION__));
+            DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_MAP_VIDEO_MEMORY\n", __FUNCTION__));
 
             if (packet->OutputBufferLength < (packet->StatusBlock->Information =
                                               sizeof(VIDEO_MEMORY_INFORMATION)) ||
@@ -982,17 +984,17 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             if ((error = VideoPortMapMemory(dev_ext, dev_ext->vram_physical,
                                             &mem_info->VideoRamLength,
                                             &fb_io_space, &mem_info->VideoRamBase)) != NO_ERROR) {
-                DEBUG_PRINT((0, "%s: map filed\n", __FUNCTION__));
+                DEBUG_PRINT((dev_ext, 0, "%s: map filed\n", __FUNCTION__));
                 goto err;
             }
             dev_ext->vram_start = mem_info->VideoRamBase;
-            DEBUG_PRINT((0, "%s: vram size %lu ret size %lu fb vaddr 0x%lx\n",
+            DEBUG_PRINT((dev_ext, 0, "%s: vram size %lu ret size %lu fb vaddr 0x%lx\n",
                          __FUNCTION__,
                          dev_ext->vram_size,
                          mem_info->VideoRamLength,
                          mem_info->VideoRamBase));
             if (mem_info->VideoRamLength < dev_ext->vram_size) {
-                DEBUG_PRINT((0, "%s: fb shrink\n", __FUNCTION__));
+                DEBUG_PRINT((dev_ext, 0, "%s: fb shrink\n", __FUNCTION__));
                 VideoPortUnmapMemory(dev_ext, mem_info->VideoRamBase, NULL);
                 mem_info->VideoRamBase = NULL;
                 mem_info->VideoRamLength = 0;
@@ -1002,16 +1004,16 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             mem_info->FrameBufferBase = mem_info->VideoRamBase;
             mem_info->FrameBufferLength = mem_info->VideoRamLength;
 #ifdef DBG
-            DEBUG_PRINT((0, "%s: zap\n", __FUNCTION__));
+            DEBUG_PRINT((dev, 0, "%s: zap\n", __FUNCTION__));
             VideoPortZeroMemory(mem_info->VideoRamBase, mem_info->VideoRamLength);
-            DEBUG_PRINT((0, "%s: zap done\n", __FUNCTION__));
+            DEBUG_PRINT((dev, 0, "%s: zap done\n", __FUNCTION__));
 #endif
         }
         break;
     case IOCTL_VIDEO_UNMAP_VIDEO_MEMORY: {
             PVOID addr;
 
-            DEBUG_PRINT((0, "%s: IOCTL_VIDEO_UNMAP_VIDEO_MEMORY\n", __FUNCTION__));
+            DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_UNMAP_VIDEO_MEMORY\n", __FUNCTION__));
 
             if (packet->InputBufferLength < sizeof(VIDEO_MEMORY)) {
                 error = ERROR_INSUFFICIENT_BUFFER;
@@ -1019,18 +1021,18 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             }
             addr = ((PVIDEO_MEMORY)(packet->InputBuffer))->RequestedVirtualAddress;
             if ((error = VideoPortUnmapMemory(dev_ext, addr, NULL)) != NO_ERROR) {
-                DEBUG_PRINT((0, "%s: unmap failed\n", __FUNCTION__));
+                DEBUG_PRINT((dev_ext, 0, "%s: unmap failed\n", __FUNCTION__));
             }
             dev_ext->vram_start = NULL;
         }
         break;
     case IOCTL_VIDEO_RESET_DEVICE:
-        DEBUG_PRINT((0, "%s: IOCTL_VIDEO_RESET_DEVICE\n", __FUNCTION__));
+        DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_RESET_DEVICE\n", __FUNCTION__));
         HWReset(dev_ext);
         break;
     case IOCTL_QXL_GET_INFO: {
             QXLDriverInfo *driver_info;
-            DEBUG_PRINT((0, "%s: IOCTL_QXL_GET_INFO\n", __FUNCTION__));
+            DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_QXL_GET_INFO\n", __FUNCTION__));
 
             if (packet->OutputBufferLength < (packet->StatusBlock->Information =
                                               sizeof(QXLDriverInfo))) {
@@ -1111,17 +1113,17 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
         }
         break;
     default:
-        DEBUG_PRINT((0, "%s: invalid command 0x%lx\n", __FUNCTION__, packet->IoControlCode));
+        DEBUG_PRINT((dev_ext, 0, "%s: invalid command 0x%lx\n", __FUNCTION__, packet->IoControlCode));
         error = ERROR_INVALID_FUNCTION;
         goto err;
     }
     packet->StatusBlock->Status = NO_ERROR;
-    DEBUG_PRINT((0, "%s: OK\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s: OK\n", __FUNCTION__));
     return TRUE;
 err:
     packet->StatusBlock->Information = 0;
     packet->StatusBlock->Status = error;
-    DEBUG_PRINT((0, "%s: ERR\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s: ERR\n", __FUNCTION__));
     return TRUE;
 }
 
