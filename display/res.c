@@ -344,8 +344,15 @@ static void *__AllocMem(PDev* pdev, UINT32 mspace_type, size_t size, BOOL force)
 static void FreeMem(PDev* pdev, UINT32 mspace_type, void *ptr)
 {
     ASSERT(pdev, pdev && pdev->Res->mspaces[mspace_type]._mspace);
-    ASSERT(pdev, (UINT8 *)ptr >= pdev->Res->mspaces[mspace_type].mspace_start && 
-                 (UINT8 *)ptr < pdev->Res->mspaces[mspace_type].mspace_end);
+#ifdef DBG
+    if (!((UINT8 *)ptr >= pdev->Res->mspaces[mspace_type].mspace_start &&
+                 (UINT8 *)ptr < pdev->Res->mspaces[mspace_type].mspace_end)) {
+        DebugPrint(pdev, 0, "ASSERT failed @ %s, %p not in [%p, %p) (%d)\n", __FUNCTION__,
+            ptr, pdev->Res->mspaces[mspace_type].mspace_start,
+            pdev->Res->mspaces[mspace_type].mspace_end, mspace_type);
+        EngDebugBreak();
+    }
+#endif
     EngAcquireSemaphore(pdev->Res->malloc_sem);
     mspace_free(pdev->Res->mspaces[mspace_type]._mspace, ptr);
     EngReleaseSemaphore(pdev->Res->malloc_sem);
