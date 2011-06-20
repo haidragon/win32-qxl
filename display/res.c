@@ -669,7 +669,7 @@ QXLDrawable *Drawable(PDev *pdev, UINT8 type, RECTL *area, CLIPOBJ *clip, UINT32
     CopyRect(&drawable->bbox, area);
 
     if (!SetClip(pdev, clip, drawable)) {
-        DEBUG_PRINT((pdev, 0, "%s: set clip filed\n", __FUNCTION__));
+        DEBUG_PRINT((pdev, 0, "%s: set clip failed\n", __FUNCTION__));
         ReleaseOutput(pdev, drawable->release_info.id);
         drawable = NULL;
     }
