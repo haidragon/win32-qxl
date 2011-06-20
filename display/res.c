@@ -604,6 +604,7 @@ void InitResources(PDev *pdev)
     UINT32 id;
     DevRes **new_global_res;
 
+    DEBUG_PRINT((pdev, 3, "%s: entry\n", __FUNCTION__));
     RtlZeroMemory(pdev->update_trace_items, sizeof(pdev->update_trace_items));
     RingInit(&pdev->update_trace);
     for (i = 0; i < NUM_UPDATE_TRACE_ITEMS; i++) {
@@ -631,10 +632,12 @@ void InitResources(PDev *pdev)
     if (global_res[id] == NULL) {
         global_res[id] = EngAllocMem(FL_ZERO_MEMORY, sizeof(DevRes), ALLOC_TAG);
         pdev->Res = global_res[id];
+        DEBUG_PRINT((pdev, 3, "%s: calling InitRes (id == %d)\n", __FUNCTION__, id));
         InitRes(pdev);
     } else {
         pdev->Res = global_res[id];
     }
+    DEBUG_PRINT((pdev, 3, "%s: exit\n", __FUNCTION__));
     EngReleaseSemaphore(res_sem);
 }
 

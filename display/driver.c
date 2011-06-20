@@ -1269,6 +1269,7 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
     if (!surface_id) {
         goto out_error;
     }
+    DEBUG_PRINT((pdev, 3, "%s: %p: %d\n", __FUNCTION__, pdev, surface_id));
 
     hbitmap = CreateDeviceBitmap(pdev, size, pdev->bitmap_format, &phys_mem, &base_mem, surface_id,
                                  DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
