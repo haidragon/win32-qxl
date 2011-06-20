@@ -319,7 +319,8 @@ static void WaitForReleaseRing(PDev* pdev)
         if (SPICE_RING_IS_EMPTY(pdev->release_ring)) {
 #ifdef DBG
             DEBUG_PRINT((pdev, 0, "%s: 0x%lx: timeout\n", __FUNCTION__, pdev));
-            DEBUG_PRINT((pdev, 0, "\tfree %d out %d path %d rect %d bits %d\n",
+            DEBUG_PRINT((pdev, 0,
+                "\tfree %d out %d path %d rect %d bits %d buf %d glyph %d cursor %d\n",
                          pdev->Res->num_free_pages,
                          pdev->Res->num_outputs,
                          pdev->Res->num_path_pages,

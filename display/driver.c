@@ -694,7 +694,6 @@ static BOOLEAN CreateVRamSlot(PDev *pdev)
     return TRUE;
 }
 
-
 static BOOL PrepareHardware(PDev *pdev)
 {
     VIDEO_MEMORY video_mem;

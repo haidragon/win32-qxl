@@ -1090,9 +1090,9 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             driver_info->num_mem_slot = dev_ext->rom->slots_end;
             driver_info->slot_gen_bits = dev_ext->rom->slot_gen_bits;
             driver_info->slot_id_bits = dev_ext->rom->slot_id_bits;
-	    driver_info->slots_generation = &dev_ext->rom->slot_generation;
-	    driver_info->ram_slot_start = &dev_ext->ram_header->mem_slot.mem_start;
-	    driver_info->ram_slot_end = &dev_ext->ram_header->mem_slot.mem_end;
+            driver_info->slots_generation = &dev_ext->rom->slot_generation;
+            driver_info->ram_slot_start = &dev_ext->ram_header->mem_slot.mem_start;
+            driver_info->ram_slot_end = &dev_ext->ram_header->mem_slot.mem_end;
             driver_info->main_mem_slot = dev_ext->mem_slots[driver_info->main_mem_slot_id];
 
 #if (WINVER < 0x0501)
