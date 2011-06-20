@@ -627,7 +627,7 @@ QXLSurfaceCmd *SurfaceCmd(PDev *pdev, UINT8 type, UINT32 surface_id)
 {
     QXLSurfaceCmd *surface_cmd;
 
-    ASSERT(pdev, pdev && area);
+    ASSERT(pdev, pdev);
 
     surface_cmd = GetSurfaceCmd(pdev);
     surface_cmd->surface_id = surface_id;
@@ -2141,7 +2141,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
         alloc_size = sizeof(Resource) + sizeof(InternalImage);
         image_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
 
-        ONDBG(pdev->num_bits_pages++);
+        ONDBG(pdev->Res->num_bits_pages++);
         image_res->refs = 1;
         image_res->free = FreeSurfaceImage;
 
@@ -2307,7 +2307,7 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
         alloc_size = sizeof(Resource) + sizeof(InternalImage);
         image_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
 
-        ONDBG(pdev->num_bits_pages++);
+        ONDBG(pdev->Res->num_bits_pages++);
         image_res->refs = 1;
         image_res->free = FreeSurfaceImage;
 

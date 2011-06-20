@@ -1074,10 +1074,6 @@ FIX FlotaToFixed(FLOATL val, FLOATL scale)
 static BOOL GetCosmeticAttr(PDev *pdev, QXLDrawable *drawable, QXLLineAttr *q_line_attr,
                             LINEATTRS *line_attr)
 {
-    ASSERT(pdev, LINE_CAP_ROUND == ENDCAP_ROUND && LINE_CAP_SQUARE == ENDCAP_SQUARE &&
-           LINE_CAP_BUTT == ENDCAP_BUTT && LINE_JOIN_ROUND == JOIN_ROUND &&
-           LINE_JOIN_BEVEL == JOIN_BEVEL && LINE_JOIN_MITER == JOIN_MITER);
-
     q_line_attr->join_style = JOIN_MITER;
     q_line_attr->end_style = ENDCAP_BUTT;
     q_line_attr->width = 1 << 4;
@@ -1089,8 +1085,6 @@ static BOOL GetCosmeticAttr(PDev *pdev, QXLDrawable *drawable, QXLLineAttr *q_li
         FIX *end;
         UINT32 nseg;
 
-        ASSERT(pdev, LA_STYLED == LINE_STYLED);
-        ASSERT(pdev, LA_STARTGAP == LINE_START_WITH_GAP);
         q_line_attr->flags = (UINT8)(line_attr->fl & (LA_STYLED | LA_STARTGAP));
         nseg = (line_attr->fl & LA_ALTERNATE) ? 2 : line_attr->cstyle;
         if ( nseg > 100) {

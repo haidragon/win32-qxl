@@ -63,6 +63,10 @@
 
 #define ABS(a) ((a) >= 0 ? (a) : -(a))
 
+#ifdef ASSERT
+#undef ASSERT
+#endif
+
 #ifdef DEBUG
 
 #define ASSERT(usr, x) \
