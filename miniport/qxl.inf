@@ -19,19 +19,19 @@ qxl.Display = 11	; system32
 
 ; WinXP x86 and up
 [q.NTx86]
-%RHAT% %QXL% = qxl, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4&REV_02
+%RHAT% %QXL% = qxl, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4
 
 ; WinXP x64 and up
 [q.NTamd64]
-%RHAT% %QXL% = qxl, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4&REV_02
+%RHAT% %QXL% = qxl, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4
 
 ; Vista x86 and up
 [q.NTx86.6.0]
-%RHAT% %QXL% = qxl_vista, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4&REV_02
+%RHAT% %QXL% = qxl_vista, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4
 
 ; Vista x64 and up
 [q.NTamd64.6.0]
-%RHAT% %QXL% = qxl_vista, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4&REV_02
+%RHAT% %QXL% = qxl_vista, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4
 
 
 [ControlFlags]
