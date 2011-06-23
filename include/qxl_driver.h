@@ -96,6 +96,8 @@ typedef struct QXLDriverInfo {
     PUCHAR memslot_del_port;
     PUCHAR destroy_all_surfaces_port;
 
+    UCHAR  pci_revision;
+
     UINT32 dev_id;
 
     QXLSurfaceCreate *primary_surface_create;

@@ -66,6 +66,8 @@ typedef struct QXLExtension {
     PVOID io_base;
     PUCHAR io_port;
 
+    UCHAR pci_revision;
+
     QXLRom *rom;
     ULONG rom_size;
 
@@ -338,6 +340,7 @@ VP_STATUS Prob(QXLExtension *dev, VIDEO_PORT_CONFIG_INFO *conf_info,
                      __FUNCTION__, pci_conf.RevisionID, QXL_REVISION_STABLE_V06));
         return ERROR_INVALID_PARAMETER;
     }
+    dev->pci_revision = pci_conf.RevisionID;
 
     VideoPortZeroMemory(ranges, sizeof(VIDEO_ACCESS_RANGE) * n_ranges);
     if ((error = VideoPortGetAccessRanges(dev, 0, NULL, n_ranges,
@@ -941,6 +944,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
 
             driver_info = packet->OutputBuffer;
             driver_info->version = QXL_DRIVER_INFO_VERSION;
+            driver_info->pci_revision = dev_ext->pci_revision;
             driver_info->display_event = dev_ext->display_event;
             driver_info->cursor_event = dev_ext->cursor_event;
             driver_info->sleep_event = dev_ext->sleep_event;

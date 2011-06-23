@@ -689,6 +689,7 @@ static BOOL PrepareHardware(PDev *pdev)
         return FALSE;
     }
 
+    pdev->pci_revision = dev_info.pci_revision;
     pdev->cmd_ring = dev_info.cmd_ring;
     pdev->cursor_ring = dev_info.cursor_ring;
     pdev->release_ring = dev_info.release_ring;
