@@ -1229,7 +1229,7 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
 
     pdev = (PDev *)dhpdev;
 
-    if (!pdev->vram_slot_initialized || pdev->bitmap_format != format) {
+    if (!pdev->vram_slot_initialized || pdev->bitmap_format != format || pdev->fb == 0) {
         return 0;
     }
 
