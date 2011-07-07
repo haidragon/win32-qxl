@@ -32,7 +32,6 @@
 #include "winddi.h"
 #include "devioctl.h"
 #include "ntddvdeo.h"
-#include "ioaccess.h"
 
 #include "qxldd.h"
 #include "utils.h"

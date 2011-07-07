@@ -86,6 +86,7 @@ typedef struct QXLExtension {
     PEVENT display_event;
     PEVENT cursor_event;
     PEVENT sleep_event;
+    PEVENT io_cmd_event;
 
     MemSlot *mem_slots;
 
@@ -520,6 +521,10 @@ void DevExternsionCleanup(QXLExtension *dev)
         VideoPortDeleteEvent(dev, dev->display_event);
     }
 
+    if (dev->io_cmd_event) {
+        VideoPortDeleteEvent(dev, dev->io_cmd_event);
+    }
+
     if (dev->rom) {
         VideoPortUnmapMemory(dev, dev->rom, NULL);
     }
@@ -551,6 +556,7 @@ VP_STATUS FindAdapter(PVOID dev_extension,
     PEVENT display_event = NULL;
     PEVENT cursor_event = NULL;
     PEVENT sleep_event = NULL;
+    PEVENT io_cmd_event = NULL;
 #if (WINVER >= 0x0501)
     VPOSVERSIONINFO  sys_info;
 #endif
@@ -602,9 +608,19 @@ VP_STATUS FindAdapter(PVOID dev_extension,
         return status;
     }
 
+    if ((status = VideoPortCreateEvent(dev_ext, 0, NULL, &io_cmd_event)) != NO_ERROR) {
+        DEBUG_PRINT((0,  "%s: create io_cmd event failed %lu\n",
+                     __FUNCTION__, status));
+        VideoPortDeleteEvent(dev_ext, sleep_event);
+        VideoPortDeleteEvent(dev_ext, display_event);
+        VideoPortDeleteEvent(dev_ext, cursor_event);
+        return status;
+    }
+
     dev_ext->display_event = display_event;
     dev_ext->cursor_event = cursor_event;
     dev_ext->sleep_event = sleep_event;
+    dev_ext->io_cmd_event = io_cmd_event;
 
     if ((status = Prob(dev_ext, conf_info, ranges, QXL_PCI_RANGES)) != NO_ERROR ||
         (status = InitIO(dev_ext, &ranges[QXL_IO_RANGE_INDEX])) != NO_ERROR ||
@@ -948,12 +964,23 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             driver_info->display_event = dev_ext->display_event;
             driver_info->cursor_event = dev_ext->cursor_event;
             driver_info->sleep_event = dev_ext->sleep_event;
+            driver_info->io_cmd_event = dev_ext->io_cmd_event;
             driver_info->cmd_ring = &dev_ext->ram_header->cmd_ring;
             driver_info->cursor_ring = &dev_ext->ram_header->cursor_ring;
             driver_info->release_ring = &dev_ext->ram_header->release_ring;
             driver_info->notify_cmd_port = dev_ext->io_port + QXL_IO_NOTIFY_CMD;
             driver_info->notify_cursor_port = dev_ext->io_port + QXL_IO_NOTIFY_CURSOR;
             driver_info->notify_oom_port = dev_ext->io_port + QXL_IO_NOTIFY_OOM;
+            driver_info->update_area_async_port = dev_ext->io_port + QXL_IO_UPDATE_AREA_ASYNC;
+            driver_info->memslot_add_async_port = dev_ext->io_port + QXL_IO_MEMSLOT_ADD_ASYNC;
+            driver_info->create_primary_async_port =
+                dev_ext->io_port + QXL_IO_CREATE_PRIMARY_ASYNC;
+            driver_info->destroy_primary_async_port =
+                dev_ext->io_port + QXL_IO_DESTROY_PRIMARY_ASYNC;
+            driver_info->destroy_surface_async_port =
+                dev_ext->io_port + QXL_IO_DESTROY_SURFACE_ASYNC;
+            driver_info->destroy_all_surfaces_async_port =
+                dev_ext->io_port + QXL_IO_DESTROY_ALL_SURFACES_ASYNC;
 
             driver_info->log_port = dev_ext->io_port + QXL_IO_LOG;
             driver_info->log_buf = dev_ext->ram_header->log_buf;
@@ -1023,8 +1050,12 @@ VOID InterruptCallback(PVOID dev_extension, PVOID Context)
 
     if (pending & QXL_INTERRUPT_DISPLAY) {
         VideoPortSetEvent(dev_ext, dev_ext->display_event);
-    } if (pending & QXL_INTERRUPT_CURSOR) {
+    }
+    if (pending & QXL_INTERRUPT_CURSOR) {
         VideoPortSetEvent(dev_ext, dev_ext->cursor_event);
+    }
+    if (pending & QXL_INTERRUPT_IO_CMD) {
+        VideoPortSetEvent(dev_ext, dev_ext->io_cmd_event);
     }
 
     dev_ext->ram_header->int_mask = ~0;

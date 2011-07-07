@@ -32,7 +32,6 @@
 #include "winddi.h"
 #include "devioctl.h"
 #include "ntddvdeo.h"
-#include "ioaccess.h"
 
 #include "qxldd.h"
 #include "utils.h"
@@ -112,7 +111,7 @@ void DebugPrintV(PDev *pdev, const char *message, va_list ap)
         _snprintf(pdev->log_buf, QXL_LOG_BUF_SIZE, QXLDD_DEBUG_PREFIX);
         _vsnprintf(pdev->log_buf + strlen(QXLDD_DEBUG_PREFIX),
                    QXL_LOG_BUF_SIZE - strlen(QXLDD_DEBUG_PREFIX), message, ap);
-        WRITE_PORT_UCHAR(pdev->log_port, 0);
+        sync_io(pdev, pdev->log_port, 0);
         EngReleaseSemaphore(pdev->Res->print_sem);
     } else {
         EngDebugPrint(QXLDD_DEBUG_PREFIX, (PCHAR)message, ap);
@@ -572,19 +571,19 @@ static VOID CreatePrimarySurface(PDev *pdev, UINT32 depth, UINT32 format,
     pdev->primary_surface_create->flags = 0;
     pdev->primary_surface_create->type = QXL_SURF_TYPE_PRIMARY;
 
-    WRITE_PORT_UCHAR(pdev->create_primary_port, 0);
+    async_io(pdev, ASYNCABLE_CREATE_PRIMARY, 0);
 }
 
 static void DestroyPrimarySurface(PDev *pdev)
 {
     HideMouse(pdev);
-    WRITE_PORT_UCHAR(pdev->destroy_primary_port, 0);
+    async_io(pdev, ASYNCABLE_DESTROY_PRIMARY, 0);
 }
 
 static void DestroyAllSurfaces(PDev *pdev)
 {
     HideMouse(pdev);
-    WRITE_PORT_UCHAR(pdev->destroy_all_surfaces_port, 0);
+    async_io(pdev, ASYNCABLE_DESTROY_ALL_SURFACES, 0);
 }
 
 BOOL SetHardwareMode(PDev *pdev)
@@ -622,7 +621,7 @@ static VOID UpdateMainSlot(PDev *pdev, MemSlot *slot)
 
 static void RemoveVRamSlot(PDev *pdev)
 {
-    WRITE_PORT_UCHAR(pdev->memslot_del_port, pdev->vram_mem_slot);
+    sync_io(pdev, pdev->memslot_del_port, pdev->vram_mem_slot);
     pdev->vram_slot_initialized = FALSE;
 }
 
@@ -642,7 +641,7 @@ static BOOLEAN CreateVRamSlot(PDev *pdev)
     *pdev->ram_slot_start = pdev->fb_phys;
     *pdev->ram_slot_end = pdev->fb_phys + pdev->fb_size;
 
-    WRITE_PORT_UCHAR(pdev->memslot_add_port, slot_id);
+    async_io(pdev, ASYNCABLE_MEMSLOT_ADD, slot_id);
 
     pdev->vram_mem_slot = slot_id;
 
@@ -696,9 +695,24 @@ static BOOL PrepareHardware(PDev *pdev)
     pdev->notify_cmd_port = dev_info.notify_cmd_port;
     pdev->notify_cursor_port = dev_info.notify_cursor_port;
     pdev->notify_oom_port = dev_info.notify_oom_port;
+
+    pdev->asyncable[ASYNCABLE_UPDATE_AREA][ASYNC] = dev_info.update_area_async_port;
+    pdev->asyncable[ASYNCABLE_UPDATE_AREA][SYNC] = dev_info.update_area_port;
+    pdev->asyncable[ASYNCABLE_MEMSLOT_ADD][ASYNC] = dev_info.memslot_add_async_port;
+    pdev->asyncable[ASYNCABLE_MEMSLOT_ADD][SYNC] = dev_info.memslot_add_port;
+    pdev->asyncable[ASYNCABLE_CREATE_PRIMARY][ASYNC] = dev_info.create_primary_async_port;
+    pdev->asyncable[ASYNCABLE_CREATE_PRIMARY][SYNC] = dev_info.create_primary_port;
+    pdev->asyncable[ASYNCABLE_DESTROY_PRIMARY][ASYNC] = dev_info.destroy_primary_async_port;
+    pdev->asyncable[ASYNCABLE_DESTROY_PRIMARY][SYNC] = dev_info.destroy_primary_port;
+    pdev->asyncable[ASYNCABLE_DESTROY_SURFACE][ASYNC] = dev_info.destroy_surface_async_port;
+    pdev->asyncable[ASYNCABLE_DESTROY_SURFACE][SYNC] = dev_info.destroy_surface_wait_port;
+    pdev->asyncable[ASYNCABLE_DESTROY_ALL_SURFACES][ASYNC] = dev_info.destroy_all_surfaces_async_port;
+    pdev->asyncable[ASYNCABLE_DESTROY_ALL_SURFACES][SYNC] = dev_info.destroy_all_surfaces_port;
+
     pdev->display_event = dev_info.display_event;
     pdev->cursor_event = dev_info.cursor_event;
     pdev->sleep_event = dev_info.sleep_event;
+    pdev->io_cmd_event = dev_info.io_cmd_event;
 #if (WINVER < 0x0501)
     pdev->WaitForEvent = dev_info.WaitForEvent;
 #endif
@@ -709,7 +723,6 @@ static BOOL PrepareHardware(PDev *pdev)
 
     pdev->dev_update_id = dev_info.update_id;
 
-    pdev->update_area_port = dev_info.update_area_port;
     pdev->update_area = dev_info.update_area;
     pdev->update_surface = dev_info.update_surface;
 
@@ -754,13 +767,7 @@ static BOOL PrepareHardware(PDev *pdev)
     pdev->fb_size = video_mem_Info.FrameBufferLength;
     pdev->fb_phys = dev_info.fb_phys;
 
-    pdev->destroy_surface_wait_port = dev_info.destroy_surface_wait_port;
-    pdev->destroy_all_surfaces_port = dev_info.destroy_all_surfaces_port;
-    pdev->memslot_add_port = dev_info.memslot_add_port;
     pdev->memslot_del_port = dev_info.memslot_del_port;
-
-    pdev->create_primary_port = dev_info.create_primary_port;
-    pdev->destroy_primary_port = dev_info.destroy_primary_port;
 
     pdev->primary_memory_start = dev_info.surface0_area;
     pdev->primary_memory_size = dev_info.surface0_area_size;

@@ -54,9 +54,16 @@ typedef struct QXLDriverInfo {
     PUCHAR notify_cmd_port;
     PUCHAR notify_cursor_port;
     PUCHAR notify_oom_port;
+    PUCHAR update_area_async_port;
+    PUCHAR memslot_add_async_port;
+    PUCHAR create_primary_async_port;
+    PUCHAR destroy_primary_async_port;
+    PUCHAR destroy_surface_async_port;
+    PUCHAR destroy_all_surfaces_async_port;
     PEVENT display_event;
     PEVENT cursor_event;
     PEVENT sleep_event;
+    PEVENT io_cmd_event;
 
     UINT32 num_pages;
     void *io_pages_virt;

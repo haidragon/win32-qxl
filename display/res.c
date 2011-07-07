@@ -21,9 +21,9 @@
 
 #include <ddraw.h>
 #include <dxmini.h>
+#include "qxldd.h"
 #include "os_dep.h"
 #include "res.h"
-#include "ioaccess.h"
 #include "utils.h"
 #include "mspace.h"
 #include "quic.h"
@@ -32,12 +32,6 @@
 #include "rop.h"
 #include "devioctl.h"
 #include "ntddvdeo.h"
-
-#if (WINVER < 0x0501)
-#define WAIT_FOR_EVENT(pdev, event, timeout) (pdev)->WaitForEvent(event, timeout)
-#else
-#define WAIT_FOR_EVENT(pdev, event, timeout) EngWaitForSingleObject(event, timeout)
-#endif
 
 static _inline QXLPHYSICAL PA(PDev *pdev, PVOID virt, UINT8 slot_id)
 {
@@ -79,7 +73,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable);
     int notify;                                         \
     SPICE_RING_PUSH(pdev->cmd_ring, notify);            \
     if (notify) {                                       \
-        WRITE_PORT_UCHAR(pdev->notify_cmd_port, 0);     \
+        sync_io(pdev, pdev->notify_cmd_port, 0);     \
     }                                                   \
 } while (0);
 
@@ -87,7 +81,7 @@ static BOOL SetClip(PDev *pdev, CLIPOBJ *clip, QXLDrawable *drawable);
     int notify;                                         \
     SPICE_RING_PUSH(pdev->cursor_ring, notify);         \
     if (notify) {                                       \
-        WRITE_PORT_UCHAR(pdev->notify_cursor_port, 0);  \
+        sync_io(pdev, pdev->notify_cursor_port, 0);  \
     }                                                   \
 } while (0);
 
@@ -238,7 +232,7 @@ static void WaitForReleaseRing(PDev* pdev)
             if (!SPICE_RING_IS_EMPTY(pdev->release_ring)) {
                 break;
             }
-            WRITE_PORT_UCHAR(pdev->notify_oom_port, 0);
+            sync_io(pdev, pdev->notify_oom_port, 0);
         }
         SPICE_RING_CONS_WAIT(pdev->release_ring, wait);
 
@@ -263,7 +257,7 @@ static void WaitForReleaseRing(PDev* pdev)
                          pdev->Res->num_cursor_pages));
 #endif
             //oom
-            WRITE_PORT_UCHAR(pdev->notify_oom_port, 0);
+            sync_io(pdev, pdev->notify_oom_port, 0);
         }
     }
     DEBUG_PRINT((pdev, 16, "%s: 0x%lx, done\n", __FUNCTION__, pdev));
@@ -2538,7 +2532,7 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     CopyRect(pdev->update_area, area);
     *pdev->update_surface = surface_id;
-    WRITE_PORT_UCHAR(pdev->update_area_port, 0);
+    async_io(pdev, ASYNCABLE_UPDATE_AREA, 0);
 }
 
 #endif
@@ -3273,6 +3267,13 @@ BOOL ResInit(PDev *pdev)
     }
     pdev->quic_data = usr_data;
     pdev->quic_data_sem = EngCreateSemaphore();
+    if (!pdev->quic_data_sem) {
+        PANIC(pdev, "quic_data_sem creation failed\n");
+    }
+    pdev->io_sem = EngCreateSemaphore();
+    if (!pdev->io_sem) {
+        PANIC(pdev, "io_sem creation failed\n");
+    }
 
     return TRUE;
 }

@@ -30,6 +30,7 @@
 #include "windef.h"
 #include "wingdi.h"
 #include "winddi.h"
+#include "ioaccess.h"
 #include "qxl_driver.h"
 #include "mspace.h"
 #if (WINVER < 0x0501)
@@ -158,6 +159,23 @@ enum {
     NUM_MSPACES,
 };
 
+enum {
+    SYNC = 0,
+    ASYNC = 1
+};
+
+typedef enum {
+    ASYNCABLE_UPDATE_AREA = 0,
+    ASYNCABLE_MEMSLOT_ADD,
+    ASYNCABLE_CREATE_PRIMARY,
+    ASYNCABLE_DESTROY_PRIMARY,
+    ASYNCABLE_DESTROY_SURFACE,
+    ASYNCABLE_DESTROY_ALL_SURFACES,
+
+    ASYNCABLE_COUNT
+} asyncable_t;
+
+
 typedef struct PDev PDev;
 
 typedef struct DrawArea {
@@ -267,6 +285,7 @@ typedef struct PDev {
     PEVENT display_event;
     PEVENT cursor_event;
     PEVENT sleep_event;
+    PEVENT io_cmd_event;
 
     PUCHAR log_port;
     UINT8 *log_buf;
@@ -288,7 +307,6 @@ typedef struct PDev {
 
     UINT32 *dev_update_id;
 
-    PUCHAR update_area_port;
     QXLRect *update_area;
     UINT32 *update_surface;
 
@@ -302,12 +320,9 @@ typedef struct PDev {
     PQXLWaitForEvent WaitForEvent;
 #endif
 
-    PUCHAR create_primary_port;
-    PUCHAR destroy_primary_port;
-    PUCHAR destroy_surface_wait_port;
-    PUCHAR memslot_add_port;
+    PUCHAR asyncable[ASYNCABLE_COUNT][2];
+    HSEMAPHORE io_sem;
     PUCHAR memslot_del_port;
-    PUCHAR destroy_all_surfaces_port;
 
     UINT8* primary_memory_start;
     UINT32 primary_memory_size;
@@ -396,6 +411,52 @@ static _inline RingItem *RingGetTail(PDev *pdev, Ring *ring)
     }
     ret = ring->prev;
     return ret;
+}
+
+#if (WINVER < 0x0501)
+#define WAIT_FOR_EVENT(pdev, event, timeout) (pdev)->WaitForEvent(event, timeout)
+#else
+#define WAIT_FOR_EVENT(pdev, event, timeout) EngWaitForSingleObject(event, timeout)
+#endif
+
+/* Write to an ioport. For some operations we support a new port that returns
+ * immediatly, and completion is signaled by an interrupt that sets io_cmd_event.
+ * If the pci_revision is >= QXL_REVISION_STABLE_V10, we support it, else do
+ * a regular ioport write.
+ */
+static _inline void async_io(PDev *pdev, asyncable_t op, UCHAR val)
+{
+    if (pdev->pci_revision >= QXL_REVISION_STABLE_V10) {
+        EngAcquireSemaphore(pdev->io_sem);
+        WRITE_PORT_UCHAR(pdev->asyncable[op][ASYNC], val);
+        WAIT_FOR_EVENT(pdev, pdev->io_cmd_event, NULL);
+        EngReleaseSemaphore(pdev->io_sem);
+        DEBUG_PRINT((pdev, 3, "finished async %d\n", (int)op));
+    } else {
+        if (pdev->asyncable[op][SYNC] == NULL) {
+            DEBUG_PRINT((pdev, 0, "ERROR: trying calling sync io on NULL port %d\n", op));
+        } else {
+            EngAcquireSemaphore(pdev->io_sem);
+            WRITE_PORT_UCHAR(pdev->asyncable[op][SYNC], val);
+            EngReleaseSemaphore(pdev->io_sem);
+        }
+    }
+}
+
+/*
+ * Before the introduction of QXL_IO_*_ASYNC all io writes would return
+ * only when their function was complete. Since qemu would only allow
+ * a single outstanding io operation between all vcpu threads, they were
+ * also protected from simultaneous calls between different vcpus.
+ *
+ * With the introduction of _ASYNC we need to explicitly lock between different
+ * threads running on different vcpus, this is what this helper accomplishes.
+ */
+static _inline void sync_io(PDev *pdev, PUCHAR port, UCHAR val)
+{
+    EngAcquireSemaphore(pdev->io_sem);
+    WRITE_PORT_UCHAR(port, val);
+    EngReleaseSemaphore(pdev->io_sem);
 }
 
 #endif
