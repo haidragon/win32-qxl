@@ -224,6 +224,9 @@ static _inline void CursorCmdAddRes(PDev *pdev, QXLCursorCmd *cmd, Resource *res
     AddRes(pdev, output, res);
 }
 
+#define SUPPORT_SURPRISE_REMOVE
+
+
 /* Called with cursor_sem held */
 static void WaitForCursorRing(PDev* pdev)
 {
@@ -237,7 +240,7 @@ static void WaitForCursorRing(PDev* pdev)
         if (!wait) {
             break;
         }
-#ifdef DBG
+#ifdef SUPPORT_SURPRISE_REMOVE
         {
             LARGE_INTEGER timeout; // 1 => 100 nanoseconds
             timeout.QuadPart = -1 * (1000 * 1000 * 10); //negative  => relative // 1s
@@ -248,7 +251,7 @@ static void WaitForCursorRing(PDev* pdev)
         }
 #else
         WAIT_FOR_EVENT(pdev, pdev->cursor_event, NULL);
-#endif //DBG
+#endif //SUPPORT_SURPRISE_REMOVE
     }
 }
 
@@ -267,7 +270,7 @@ static void WaitForCmdRing(PDev* pdev)
         }
         DEBUG_PRINT((pdev, 9, "%s: 0x%lx\n", __FUNCTION__, pdev));
 
-#ifdef DBG
+#ifdef SUPPORT_SURPRISE_REMOVE
         {
             LARGE_INTEGER timeout; // 1 => 100 nanoseconds
             timeout.QuadPart = -1 * (1000 * 1000 * 10); //negative  => relative // 1s
@@ -278,7 +281,7 @@ static void WaitForCmdRing(PDev* pdev)
         }
 #else
         WAIT_FOR_EVENT(pdev, pdev->display_event, NULL);
-#endif //DBG
+#endif //SUPPORT_SURPRISE_REMOVE
     }
 }
 
