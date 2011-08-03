@@ -180,7 +180,10 @@ VP_STATUS InitIO(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
     PAGED_CODE();
     DEBUG_PRINT((dev, 0, "%s\n", __FUNCTION__));
 
-    if (range->RangeLength < QXL_IO_RANGE_SIZE
+    if ((dev->pci_revision == QXL_REVISION_STABLE_V06 &&
+         range->RangeLength < QXL_IO_DESTROY_ALL_SURFACES + 1)
+        || (dev->pci_revision > QXL_REVISION_STABLE_V06 &&
+         range->RangeLength < QXL_IO_FLUSH_RELEASE + 1)
         || !range->RangeInIoSpace) {
         DEBUG_PRINT((dev, 0, "%s: bad io range\n", __FUNCTION__));
         return ERROR_INVALID_DATA;
