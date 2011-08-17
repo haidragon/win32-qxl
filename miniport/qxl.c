@@ -324,6 +324,11 @@ VP_STATUS InitVRAM(QXLExtension *dev, PVIDEO_ACCESS_RANGE range);
 
 VP_STATUS InitVRAM(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
 {
+    UINT8 *vram_addr = NULL;
+    ULONG vram_mapped_size = range->RangeLength;
+    ULONG io_space = VIDEO_MEMORY_SPACE_MEMORY;
+    VP_STATUS error;
+
     PAGED_CODE();
     DEBUG_PRINT((dev, 0, "%s\n", __FUNCTION__));
 
@@ -332,10 +337,24 @@ VP_STATUS InitVRAM(QXLExtension *dev, PVIDEO_ACCESS_RANGE range)
         return ERROR_INVALID_DATA;
     }
 
+    if ((error = VideoPortMapMemory(dev, range->RangeStart,
+                                    &vram_mapped_size,
+                                    &io_space,
+                                    &vram_addr))) {
+        DEBUG_PRINT((dev, 0, "%s: map vram failed\n",  __FUNCTION__));
+        return error;
+    }
+
+    if (vram_mapped_size < range->RangeLength) {
+        DEBUG_PRINT((dev, 0, "%s: vram shrinked\n", __FUNCTION__));
+        VideoPortUnmapMemory(dev, vram_addr, NULL);
+        return ERROR_NOT_ENOUGH_MEMORY;
+    }
     dev->vram_physical = range->RangeStart;
+    dev->vram_start = vram_addr;
     dev->vram_size = range->RangeLength;
-    DEBUG_PRINT((dev, 0, "%s: OK, vram 0x%lx size %lu\n",
-                 __FUNCTION__, (ULONG)range->RangeStart.QuadPart, range->RangeLength));
+    DEBUG_PRINT((dev, 0, "%s: OK, vram 0x%lx size %lu vaddr 0x%lx\n", __FUNCTION__,
+                (ULONG)range->RangeStart.QuadPart, range->RangeLength, dev->vram_start));
     return NO_ERROR;
 }
 
@@ -575,6 +594,10 @@ void DevExternsionCleanup(QXLExtension *dev)
 
     if (dev->ram_start) {
         VideoPortUnmapMemory(dev, dev->ram_start, NULL);
+    }
+
+    if (dev->vram_start) {
+        VideoPortUnmapMemory(dev, dev->vram_start, NULL);
     }
 
     if (dev->modes) {
@@ -966,7 +989,6 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
         break;
     case IOCTL_VIDEO_MAP_VIDEO_MEMORY: {
             PVIDEO_MEMORY_INFORMATION mem_info;
-            ULONG fb_io_space;
 
             DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_MAP_VIDEO_MEMORY\n", __FUNCTION__));
 
@@ -976,36 +998,11 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
                 error = ERROR_INSUFFICIENT_BUFFER;
                 goto err;
             }
+
+            ASSERT(((PVIDEO_MEMORY)(packet->InputBuffer))->RequestedVirtualAddress == NULL);
             mem_info = packet->OutputBuffer;
-
-            mem_info->VideoRamBase =
-                                    ((PVIDEO_MEMORY)(packet->InputBuffer))->RequestedVirtualAddress;
-            ASSERT(mem_info->VideoRamBase == NULL);
-            mem_info->VideoRamLength = dev_ext->vram_size;
-            fb_io_space = VIDEO_MEMORY_SPACE_MEMORY;
-
-            if ((error = VideoPortMapMemory(dev_ext, dev_ext->vram_physical,
-                                            &mem_info->VideoRamLength,
-                                            &fb_io_space, &mem_info->VideoRamBase)) != NO_ERROR) {
-                DEBUG_PRINT((dev_ext, 0, "%s: map filed\n", __FUNCTION__));
-                goto err;
-            }
-            dev_ext->vram_start = mem_info->VideoRamBase;
-            DEBUG_PRINT((dev_ext, 0, "%s: vram size %lu ret size %lu fb vaddr 0x%lx\n",
-                         __FUNCTION__,
-                         dev_ext->vram_size,
-                         mem_info->VideoRamLength,
-                         mem_info->VideoRamBase));
-            if (mem_info->VideoRamLength < dev_ext->vram_size) {
-                DEBUG_PRINT((dev_ext, 0, "%s: fb shrink\n", __FUNCTION__));
-                VideoPortUnmapMemory(dev_ext, mem_info->VideoRamBase, NULL);
-                mem_info->VideoRamBase = NULL;
-                mem_info->VideoRamLength = 0;
-                error = ERROR_NOT_ENOUGH_MEMORY;
-                goto err;
-            }
-            mem_info->FrameBufferBase = mem_info->VideoRamBase;
-            mem_info->FrameBufferLength = mem_info->VideoRamLength;
+            mem_info->VideoRamBase = mem_info->FrameBufferBase = dev_ext->vram_start;
+            mem_info->VideoRamLength = mem_info->FrameBufferLength = dev_ext->vram_size;
 #if 0
 #ifdef DBG
             DEBUG_PRINT((dev, 0, "%s: zap\n", __FUNCTION__));
@@ -1016,19 +1013,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
         }
         break;
     case IOCTL_VIDEO_UNMAP_VIDEO_MEMORY: {
-            PVOID addr;
-
-            DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_UNMAP_VIDEO_MEMORY\n", __FUNCTION__));
-
-            if (packet->InputBufferLength < sizeof(VIDEO_MEMORY)) {
-                error = ERROR_INSUFFICIENT_BUFFER;
-                goto err;
-            }
-            addr = ((PVIDEO_MEMORY)(packet->InputBuffer))->RequestedVirtualAddress;
-            if ((error = VideoPortUnmapMemory(dev_ext, addr, NULL)) != NO_ERROR) {
-                DEBUG_PRINT((dev_ext, 0, "%s: unmap failed\n", __FUNCTION__));
-            }
-            dev_ext->vram_start = NULL;
+            DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_VIDEO_UNMAP_VIDEO_MEMORY (do nothing) \n", __FUNCTION__));
         }
         break;
     case IOCTL_VIDEO_RESET_DEVICE:
