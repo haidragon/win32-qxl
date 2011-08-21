@@ -957,24 +957,82 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
     DEBUG_PRINT((pdev, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
 }
 
+static void FlushSurfaces(PDev *pdev)
+{
+    UINT32 surface_id;
+    SurfaceInfo *surface_info;
+    SURFOBJ *surf_obj;
+    RECTL area = {0, 0, 0, 0};
+
+    if (pdev->pci_revision < QXL_REVISION_STABLE_V10) {
+        DEBUG_PRINT((pdev, 1, "%s: revision too old for QXL_IO_FLUSH_SURFACES", __FUNCTION__));
+        for (surface_id = pdev->n_surfaces - 1; surface_id >  0 ; --surface_id) {
+            surface_info = GetSurfaceInfo(pdev, surface_id);
+
+            if (!surface_info->draw_area.base_mem) {
+                continue;
+            }
+            surf_obj = surface_info->draw_area.surf_obj;
+            if (!surf_obj) {
+                continue;
+            }
+            area.right = surf_obj->sizlBitmap.cx;
+            area.bottom = surf_obj->sizlBitmap.cy;
+            UpdateArea(pdev,&area, surface_id);
+        }
+    } else {
+        async_io(pdev, ASYNCABLE_FLUSH_SURFACES, 0);
+    }
+}
+
+static BOOL FlushRelease(PDev *pdev)
+{
+    if (pdev->pci_revision<  QXL_REVISION_STABLE_V10) {
+        DWORD length;
+
+        DEBUG_PRINT((pdev, 1, "%s: revision too old for QXL_IO_FLUSH_RELEASE", __FUNCTION__));
+        if (EngDeviceIoControl(pdev->driver, IOCTL_VIDEO_RESET_DEVICE,
+                               NULL, 0, NULL, 0, &length)) {
+            DEBUG_PRINT((NULL, 0, "%s: reset failed 0x%lx\n", __FUNCTION__, pdev));
+            return FALSE;
+        }
+    } else {
+        /* Free release ring contents */
+        ReleaseCacheDeviceMemoryResources(pdev);
+        EmptyReleaseRing(pdev);
+        /* Get the last free list onto the release ring */
+        sync_io(pdev, pdev->flush_release_port, 0);
+        DEBUG_PRINT((pdev, 4, "%s after FLUSH_RELEASE\n", __FUNCTION__));
+        /* And release that. mspace allocators should be clean after. */
+        EmptyReleaseRing(pdev);
+    }
+    return TRUE;
+}
+
 static BOOL AssertModeDisable(PDev *pdev)
 {
     DEBUG_PRINT((pdev, 3, "%s entry\n", __FUNCTION__));
     /* flush command ring and update all surfaces */
-    async_io(pdev, ASYNCABLE_FLUSH_SURFACES, 0);
+    FlushSurfaces(pdev);
+    DebugCountAliveSurfaces(pdev);
+    /*
+     * this call is redundant for
+     * pci_revision <  QXL_REVISION_STABLE_V10, due to the
+     * IOCTL_VIDEO_RESET_DEVICE in FlushRelease. However,
+     * MoveAllSurfacesToRam depends on destroy_all_surfaces
+     * in case of failure.
+     * TODO: make MoveAllSurfacesToRam send destroy_surface
+     * commands instead of create_surface commands in case
+     * of failure
+     */
     async_io(pdev, ASYNCABLE_DESTROY_ALL_SURFACES, 0);
     /* move all surfaces from device to system memory */
     if (!MoveAllSurfacesToRam(pdev)) {
         return FALSE;
     }
-    /* Free release ring contents */
-    ReleaseCacheDeviceMemoryResources(pdev);
-    EmptyReleaseRing(pdev);
-    /* Get the last free list onto the release ring */
-    sync_io(pdev, pdev->flush_release_port, 0);
-    DEBUG_PRINT((pdev, 4, "%s after FLUSH_RELEASE\n", __FUNCTION__));
-    /* And release that. mspace allocators should be clean after. */
-    EmptyReleaseRing(pdev);
+    if (!FlushRelease(pdev)) {
+        return FALSE;
+    }
     RemoveVRamSlot(pdev);
     DebugCountAliveSurfaces(pdev);
     DEBUG_PRINT((pdev, 4, "%s: [%d,%d] [%d,%d] [%d,%d] %lx\n", __FUNCTION__,
@@ -1002,31 +1060,12 @@ static void AssertModeEnable(PDev *pdev)
     DebugCountAliveSurfaces(pdev);
 }
 
-BOOL DrvAssertModeOld(PDev *pdev, BOOL enable)
-{
-    if (enable) {
-        InitResources(pdev);
-        EnableQXLPrimarySurface(pdev);
-        CreateVRamSlot(pdev);
-    } else {
-        DisableQXLPrimarySurface(pdev, 0);
-        RemoveVRamSlot(pdev);
-    }
-    DEBUG_PRINT((pdev, 1, "%s: 0x%lx exit %d\n", __FUNCTION__, pdev, enable));
-    return TRUE;
-}
-
 BOOL DrvAssertMode(DHPDEV in_pdev, BOOL enable)
 {
     PDev* pdev = (PDev*)in_pdev;
     BOOL ret = TRUE;
 
-    DEBUG_PRINT((pdev, 1, "%s: 0x%lx %d\n", __FUNCTION__, pdev, enable));
-    if (pdev->pci_revision < QXL_REVISION_STABLE_V10) {
-        return DrvAssertModeOld(pdev, enable);
-    }
-    /* new implementation that works correctly only with newer devices
-     * that implement QXL_IO_FLUSH_RELEASE */
+    DEBUG_PRINT((pdev, 1, "%s: 0x%lx revision %d enable %d\n", __FUNCTION__, pdev, pdev->pci_revision, enable));
     if (pdev->enabled == enable) {
         DEBUG_PRINT((pdev, 1, "%s: called twice with same argument (%d)\n", __FUNCTION__,
             enable));

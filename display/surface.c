@@ -359,6 +359,12 @@ BOOL MoveAllSurfacesToRam(PDev *pdev)
             DEBUG_PRINT((pdev, 0, "%s: %d: EngModifySurface failed, sending create\n",
                          __FUNCTION__, surface_id));
             phys_mem = SurfaceToPhysical(pdev, surface_info->draw_area.base_mem);
+            /*
+             * TODO: bug. create_command should be send for all surfaces >= surface_id
+             *       since they stay in the pci-bar. Alternatively,
+             *       don't call destroy_all_surfaces, instead send destroy commands
+             *       for all surfaces with id < surface_id.
+             */
             SendSurfaceCreateCommand(pdev, surface_id, surf_obj->sizlBitmap,
                                      surface_info->bitmap_format, -surf_obj->lDelta, phys_mem,
                                      /* the surface is still there, tell server not to erase */

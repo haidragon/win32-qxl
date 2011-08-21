@@ -676,10 +676,11 @@ void InitResources(PDev *pdev)
         pdev->Res = global_res[id];
         DEBUG_PRINT((pdev, 3, "%s: calling InitRes (id == %d)\n", __FUNCTION__, id));
         InitRes(pdev);
+         DEBUG_PRINT((pdev, 1, "%s: called InitRes (id == %d)\n", __FUNCTION__, id));
     } else {
         pdev->Res = global_res[id];
     }
-    DEBUG_PRINT((pdev, 3, "%s: exit\n", __FUNCTION__));
+    DEBUG_PRINT((pdev, 1, "%s: exit\n", __FUNCTION__));
     EngReleaseSemaphore(res_sem);
 }
 
