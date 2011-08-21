@@ -3512,23 +3512,3 @@ void CheckAndSetSSE2()
 }
 
 #endif
-
-void ResetAllDevices()
-{
-    UINT32 i;
-    EngAcquireSemaphore(res_sem);
-
-    for (i = 0; i < num_global_res; i++) {
-        if (global_res[i] && global_res[i]->driver) {
-            DWORD length;
-            if (EngDeviceIoControl(global_res[i]->driver, IOCTL_VIDEO_RESET_DEVICE,
-                                   NULL, 0, NULL, 0, &length)) {
-                DEBUG_PRINT((NULL, 0, "%s: reset to device failed 0x%lx\n",
-                            __FUNCTION__, global_res[i]->driver));
-                
-            }
-        }
-    }
-
-    EngReleaseSemaphore(res_sem);
-}

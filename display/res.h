@@ -70,7 +70,6 @@ void ResDestroyGlobals();
 #ifndef _WIN64
 void CheckAndSetSSE2();
 #endif
-void ResetAllDevices();
 void EmptyReleaseRing(PDev *pdev);
 void InitDeviceMemoryResources(PDev *pdev);
 void ReleaseCacheDeviceMemoryResources(PDev *pdev);
