@@ -208,14 +208,15 @@ VOID DeleteDeviceBitmap(PDev *pdev, UINT32 surface_id, UINT8 allocation_type)
     FreeDrawArea(drawarea);
 
     if (allocation_type != DEVICE_BITMAP_ALLOCATION_TYPE_SURF0 &&
-        pdev->Res->surfaces_info[surface_id].draw_area.base_mem != NULL) {
+        pdev->surfaces_info[surface_id].draw_area.base_mem != NULL) {
 
         if (allocation_type == DEVICE_BITMAP_ALLOCATION_TYPE_RAM) {
             /* server side this surface is already destroyed, just free it here */
-            ASSERT(pdev, pdev->Res->surfaces_info[surface_id].draw_area.base_mem ==
-                pdev->Res->surfaces_info[surface_id].copy);
-            QXLDelSurface(pdev, pdev->Res->surfaces_info[surface_id].draw_area.base_mem,
-                allocation_type);
+            ASSERT(pdev, pdev->surfaces_info[surface_id].draw_area.base_mem ==
+                         pdev->surfaces_info[surface_id].copy);
+            QXLDelSurface(pdev,
+                          pdev->surfaces_info[surface_id].draw_area.base_mem,
+                          allocation_type);
             FreeSurfaceInfo(pdev, surface_id);
         } else {
             QXLSurfaceCmd *surface_cmd;
@@ -286,7 +287,7 @@ int MoveAllSurfacesToVideoRam(PDev *pdev)
     SurfaceInfo *surface_info;
 
     /* brute force implementation - alternative is to keep an updated used_surfaces list */
-    DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((pdev, 3, "%s %p\n", __FUNCTION__, pdev));
 
     for (surface_id = 1 ; surface_id < pdev->n_surfaces ; ++surface_id) {
         surface_info = GetSurfaceInfo(pdev, surface_id);

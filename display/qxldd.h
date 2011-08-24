@@ -206,57 +206,6 @@ struct SurfaceInfo {
     } u;
 };
 
-typedef struct DevRes {   
-    MspaceInfo mspaces[NUM_MSPACES];
-    HSEMAPHORE malloc_sem; /* Also protects release ring */
-
-    BOOL need_init;
-    UINT64 free_outputs;
-    UINT32 update_id;
-
-    HSEMAPHORE print_sem;
-    HSEMAPHORE cmd_sem;
-    HSEMAPHORE cursor_sem; /* Protects cursor_ring */
-    HSEMAPHORE surface_sem; /* Protects surfaces allocation */
-    HSEMAPHORE image_cache_sem; /* Protects image cache */
-    HSEMAPHORE cursor_cache_sem; /* Protects cursor cache */
-    HSEMAPHORE palette_cache_sem; /* Protects palette cache */
-
-    CacheImage cache_image_pool[IMAGE_POOL_SIZE];
-    Ring cache_image_lru;
-    Ring cursors_lru;
-    Ring palette_lru;
-
-    ImageKey image_key_lookup[IMAGE_KEY_HASH_SIZE];
-    struct CacheImage *image_cache[IMAGE_HASH_SIZE];
-    struct InternalCursor *cursor_cache[CURSOR_HASH_SIZE];
-    UINT32 num_cursors;
-    UINT32 last_cursor_id;
-    struct InternalPalette *palette_cache[PALETTE_HASH_SIZE];
-    UINT32 num_palettes;
-
-    SurfaceInfo *surfaces_info;
-    SurfaceInfo *free_surfaces;
-
-    HANDLE driver;
-#ifdef DBG
-    int num_free_pages;
-    int num_outputs;
-    int num_path_pages;
-    int num_rects_pages;
-    int num_bits_pages;
-    int num_buf_pages;
-    int num_glyphs_pages;
-    int num_cursor_pages;
-#endif
-
-#ifdef CALL_TEST
-    BOOL count_calls;
-    UINT32 total_calls;
-    UINT32 call_counters[NUM_CALL_COUNTERS];
-#endif
-} DevRes;
-
 #define SSE_MASK 15
 #define SSE_ALIGN 16
 
@@ -345,26 +294,82 @@ typedef struct PDev {
 
     UINT32 dev_id;
 
-    DevRes *Res;
-
     Ring update_trace;
     UpdateTrace update_trace_items[NUM_UPDATE_TRACE_ITEMS];
 
+    UINT64 free_outputs;
+
+    MspaceInfo mspaces[NUM_MSPACES];
+
+    /*
+     * TODO: reconsider semaphores according to
+     * http://msdn.microsoft.com/en-us/library/ff568281%28v=vs.85%29.aspx
+     * 1) In order to protect the device log buffer,
+     *     the print_sem must be shared between different pdevs and
+     *     different display sessions.
+     * 2) malloc_sem: not sure what it protects. Maybe globals in mspace?
+     *    since only the enabled pdev is allocating memory, I don't
+     *    think it is required (unless it is possible to have
+     *    AssertMode(x, enable) before AssertMode(y, disable).
+     * 3) cmd_sem, cursor_sem: again, since only the enabled pdev touches the cmd rings
+     *    I don't think it is required.
+     * 4) io_sem - same as print sem. Note that we should prevent starvation between
+     *    print_sem and io_sem in DebugPrintV.
+     *
+     */
+    HSEMAPHORE malloc_sem; /* Also protects release ring */
+    HSEMAPHORE print_sem;
+    HSEMAPHORE cmd_sem;
+    HSEMAPHORE cursor_sem; /* Protects cursor_ring */
+
+    CacheImage cache_image_pool[IMAGE_POOL_SIZE];
+    Ring cache_image_lru;
+    Ring cursors_lru;
+    Ring palette_lru;
+    ImageKey image_key_lookup[IMAGE_KEY_HASH_SIZE];
+    struct CacheImage *image_cache[IMAGE_HASH_SIZE];
+    struct InternalCursor *cursor_cache[CURSOR_HASH_SIZE];
+    UINT32 num_cursors;
+    UINT32 last_cursor_id;
+    struct InternalPalette *palette_cache[PALETTE_HASH_SIZE];
+    UINT32 num_palettes;
+
     UINT32 n_surfaces;
     SurfaceInfo surface0_info;
+    SurfaceInfo *surfaces_info;
+    SurfaceInfo *free_surfaces;
+
+    UINT32 update_id;
 
     UINT32 enabled; /* 1 between DrvAssertMode(TRUE) and DrvAssertMode(FALSE) */
 
+
     UCHAR  pci_revision;
+
+#ifdef DBG
+    int num_free_pages;
+    int num_outputs;
+    int num_path_pages;
+    int num_rects_pages;
+    int num_bits_pages;
+    int num_buf_pages;
+    int num_glyphs_pages;
+    int num_cursor_pages;
+#endif
+
+#ifdef CALL_TEST
+    BOOL count_calls;
+    UINT32 total_calls;
+    UINT32 call_counters[NUM_CALL_COUNTERS];
+#endif
 } PDev;
 
 
 void DebugPrintV(PDev *pdev, const char *message, va_list ap);
 void DebugPrint(PDev *pdev, int level, const char *message, ...);
 
-void InitGlobalRes();
-void CleanGlobalRes();
 void InitResources(PDev *pdev);
+void ClearResources(PDev *pdev);
 
 #ifdef CALL_TEST
 void CountCall(PDev *pdev, int counter);
@@ -478,9 +483,9 @@ static _inline void sync_io(PDev *pdev, PUCHAR port, UCHAR val)
 #ifdef DBG
 #define DUMP_VRAM_MSPACE(pdev) \
     do { \
-        DEBUG_PRINT((pdev, 0, "%s: dumping mspace vram (%p, %p)\n", __FUNCTION__, pdev, global_res ? global_res[pdev->dev_id] : NULL)); \
-        if (pdev && global_res && global_res[pdev->dev_id]) {  \
-            mspace_malloc_stats(global_res[pdev->dev_id]->mspaces[MSPACE_TYPE_VRAM]._mspace); \
+        DEBUG_PRINT((pdev, 0, "%s: dumping mspace vram (%p)\n", __FUNCTION__, pdev)); \
+        if (pdev) {  \
+            mspace_malloc_stats(pdev->mspaces[MSPACE_TYPE_VRAM]._mspace); \
         } else { \
             DEBUG_PRINT((pdev, 0, "nothing\n")); \
         }\
@@ -488,9 +493,9 @@ static _inline void sync_io(PDev *pdev, PUCHAR port, UCHAR val)
 
 #define DUMP_DEVRAM_MSPACE(pdev) \
     do { \
-        DEBUG_PRINT((pdev, 0, "%s: dumping mspace devram (%p, %p)\n", __FUNCTION__, pdev, global_res ? global_res[pdev->dev_id] : NULL)); \
-        if (pdev && global_res && global_res[pdev->dev_id]) {  \
-            mspace_malloc_stats(global_res[pdev->dev_id]->mspaces[MSPACE_TYPE_DEVRAM]._mspace); \
+        DEBUG_PRINT((pdev, 0, "%s: dumping mspace devram (%p)\n", __FUNCTION__, pdev)); \
+        if (pdev) {  \
+            mspace_malloc_stats(pdev->mspaces[MSPACE_TYPE_DEVRAM]._mspace); \
         } else { \
             DEBUG_PRINT((pdev, 0, "nothing\n")); \
         }\

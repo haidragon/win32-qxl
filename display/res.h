@@ -73,6 +73,5 @@ void CheckAndSetSSE2();
 void EmptyReleaseRing(PDev *pdev);
 void InitDeviceMemoryResources(PDev *pdev);
 void ReleaseCacheDeviceMemoryResources(PDev *pdev);
-extern DevRes **global_res;
 
 #endif

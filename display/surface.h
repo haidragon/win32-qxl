@@ -26,7 +26,7 @@ static _inline UINT32 GetSurfaceIdFromInfo(SurfaceInfo *info)
   if (info == &pdev->surface0_info) {
     return 0;
   }
-  return (UINT32)(info - pdev->Res->surfaces_info);
+  return (UINT32)(info - pdev->surfaces_info);
 }
 
 static _inline SurfaceInfo *GetSurfaceInfo(PDev *pdev, UINT32 id)
@@ -34,7 +34,7 @@ static _inline SurfaceInfo *GetSurfaceInfo(PDev *pdev, UINT32 id)
   if (id == 0) {
     return &pdev->surface0_info;
   }
-  return &pdev->Res->surfaces_info[id];
+  return &pdev->surfaces_info[id];
 }
 
 static _inline UINT32 GetSurfaceId(SURFOBJ *surf)
@@ -55,41 +55,33 @@ static _inline void FreeSurfaceInfo(PDev *pdev, UINT32 surface_id)
     if (surface_id == 0) {
         return;
     }
-    EngAcquireSemaphore(pdev->Res->surface_sem);
 
     DEBUG_PRINT((pdev, 9, "%s: %p: %d\n", __FUNCTION__, pdev, surface_id));
-    surface = &pdev->Res->surfaces_info[surface_id];
+    surface = &pdev->surfaces_info[surface_id];
     if (surface->draw_area.base_mem == NULL) {
         DEBUG_PRINT((pdev, 9, "%s: %p: %d: double free. safely ignored\n", __FUNCTION__,
-            pdev, surface_id));
-        EngReleaseSemaphore(pdev->Res->surface_sem);
+                     pdev, surface_id));
         return;
     }
     surface->draw_area.base_mem = NULL; /* Mark as not used */
-    surface->u.next_free = pdev->Res->free_surfaces;
-    pdev->Res->free_surfaces = surface;
-
-    EngReleaseSemaphore(pdev->Res->surface_sem);
+    surface->u.next_free = pdev->free_surfaces;
+    pdev->free_surfaces = surface;
 }
-
 
 static UINT32 GetFreeSurface(PDev *pdev)
 {
     UINT32 x, id;
     SurfaceInfo *surface;
 
-    EngAcquireSemaphore(pdev->Res->surface_sem);
-
-    surface = pdev->Res->free_surfaces;
+    ASSERT(pdev, pdev->enabled);
+    surface = pdev->free_surfaces;
     if (surface == NULL) {
         id = 0;
     } else {
-      pdev->Res->free_surfaces = surface->u.next_free;
+      pdev->free_surfaces = surface->u.next_free;
 
-      id = (UINT32)(surface - pdev->Res->surfaces_info);
+      id = (UINT32)(surface - pdev->surfaces_info);
     }
-
-    EngReleaseSemaphore(pdev->Res->surface_sem);
 
     return id;
 }

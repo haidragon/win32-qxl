@@ -106,13 +106,13 @@ static CallCounterInfo counters_info[NUM_CALL_COUNTERS] = {
 
 void DebugPrintV(PDev *pdev, const char *message, va_list ap)
 {
-    if (pdev && pdev->log_buf && pdev->Res) {
-        EngAcquireSemaphore(pdev->Res->print_sem);
+    if (pdev && pdev->log_buf) {
+        EngAcquireSemaphore(pdev->print_sem);
         _snprintf(pdev->log_buf, QXL_LOG_BUF_SIZE, QXLDD_DEBUG_PREFIX);
         _vsnprintf(pdev->log_buf + strlen(QXLDD_DEBUG_PREFIX),
                    QXL_LOG_BUF_SIZE - strlen(QXLDD_DEBUG_PREFIX), message, ap);
         sync_io(pdev, pdev->log_port, 0);
-        EngReleaseSemaphore(pdev->Res->print_sem);
+        EngReleaseSemaphore(pdev->print_sem);
     } else {
         EngDebugPrint(QXLDD_DEBUG_PREFIX, (PCHAR)message, ap);
     }
@@ -248,7 +248,6 @@ BOOL DrvEnableDriver(ULONG engine_version, ULONG enable_data_size, PDRVENABLEDAT
 #ifndef _WIN64
     CheckAndSetSSE2();
 #endif
-    InitGlobalRes();
     DEBUG_PRINT((NULL, 1, "%s: end\n", __FUNCTION__));
     return TRUE;
 }
@@ -257,7 +256,6 @@ VOID DrvDisableDriver(VOID)
 {
     DEBUG_PRINT((NULL, 1, "%s\n", __FUNCTION__));
     ResDestroyGlobals();
-    CleanGlobalRes();
 }
 
 DWORD GetAvailableModes(HANDLE driver, PVIDEO_MODE_INFORMATION *mode_info,
@@ -541,6 +539,7 @@ static void DebugCountAliveSurfaces(PDev *pdev)
         surface_info = GetSurfaceInfo(pdev, i);
         if (surface_info->draw_area.base_mem != NULL) {
             total++;
+            // all should belong to the same pdev
             if (surface_info->u.pdev == pdev) {
                 of_pdev++;
                 if (surface_info->draw_area.surf_obj == NULL) {
@@ -563,7 +562,6 @@ VOID DrvDisablePDEV(DHPDEV in_pdev)
     PDev* pdev = (PDev*)in_pdev;
 
     DEBUG_PRINT((pdev, 1, "%s: 0x%lx\n", __FUNCTION__, pdev));
-    DebugCountAliveSurfaces(pdev);
     ResDestroy(pdev);
     DestroyPalette(pdev);
     EngFreeMem(pdev);
@@ -954,6 +952,8 @@ VOID DrvDisableSurface(DHPDEV in_pdev)
         pdev->mem_slots = NULL;
     }
 
+    DebugCountAliveSurfaces(pdev);
+    ClearResources(pdev);
     DEBUG_PRINT((pdev, 1, "%s: 0x%lx exit\n", __FUNCTION__, pdev));
 }
 
@@ -965,7 +965,7 @@ static void FlushSurfaces(PDev *pdev)
     RECTL area = {0, 0, 0, 0};
 
     if (pdev->pci_revision < QXL_REVISION_STABLE_V10) {
-        DEBUG_PRINT((pdev, 1, "%s: revision too old for QXL_IO_FLUSH_SURFACES", __FUNCTION__));
+        DEBUG_PRINT((pdev, 1, "%s: revision too old for QXL_IO_FLUSH_SURFACES\n", __FUNCTION__));
         for (surface_id = pdev->n_surfaces - 1; surface_id >  0 ; --surface_id) {
             surface_info = GetSurfaceInfo(pdev, surface_id);
 
@@ -990,7 +990,7 @@ static BOOL FlushRelease(PDev *pdev)
     if (pdev->pci_revision<  QXL_REVISION_STABLE_V10) {
         DWORD length;
 
-        DEBUG_PRINT((pdev, 1, "%s: revision too old for QXL_IO_FLUSH_RELEASE", __FUNCTION__));
+        DEBUG_PRINT((pdev, 1, "%s: revision too old for QXL_IO_FLUSH_RELEASE\n", __FUNCTION__));
         if (EngDeviceIoControl(pdev->driver, IOCTL_VIDEO_RESET_DEVICE,
                                NULL, 0, NULL, 0, &length)) {
             DEBUG_PRINT((NULL, 0, "%s: reset failed 0x%lx\n", __FUNCTION__, pdev));
@@ -1039,20 +1039,19 @@ static BOOL AssertModeDisable(PDev *pdev)
         pdev->cmd_ring->prod, pdev->cmd_ring->cons,
         pdev->cursor_ring->prod, pdev->cursor_ring->cons,
         pdev->release_ring->prod, pdev->release_ring->cons,
-        pdev->Res->free_outputs));
-    DEBUG_PRINT((pdev, 4, "%s exit\n", __FUNCTION__));
+        pdev->free_outputs));
+    DEBUG_PRINT((pdev, 3, "%s exit\n", __FUNCTION__));
     return TRUE;
 }
 
 static void AssertModeEnable(PDev *pdev)
 {
-    InitResources(pdev);
     InitDeviceMemoryResources(pdev);
     DEBUG_PRINT((pdev, 3, "%s: [%d,%d] [%d,%d] [%d,%d] %lx\n", __FUNCTION__,
         pdev->cmd_ring->prod, pdev->cmd_ring->cons,
         pdev->cursor_ring->prod, pdev->cursor_ring->cons,
         pdev->release_ring->prod, pdev->release_ring->cons,
-        pdev->Res->free_outputs));
+        pdev->free_outputs));
     EnableQXLPrimarySurface(pdev);
     CreateVRamSlot(pdev);
     DebugCountAliveSurfaces(pdev);
@@ -1377,6 +1376,9 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
     pdev = (PDev *)dhpdev;
 
     if (!pdev->vram_slot_initialized || pdev->bitmap_format != format || pdev->fb == 0) {
+        DEBUG_PRINT((pdev, 3, "%s failed: %p: slot_initialized %d, format(%d,%d), fb %p\n",
+                    __FUNCTION__, pdev, pdev->vram_slot_initialized,
+                    pdev->bitmap_format, format, pdev->fb));
         return 0;
     }
 
@@ -1384,6 +1386,7 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
 
     surface_id = GetFreeSurface(pdev);
     if (!surface_id) {
+        DEBUG_PRINT((pdev, 3, "%s:%p GetFreeSurface failed\n", __FUNCTION__, pdev));
         goto out_error;
     }
     DEBUG_PRINT((pdev, 3, "%s: %p: %d\n", __FUNCTION__, pdev, surface_id));
@@ -1391,6 +1394,7 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
     hbitmap = CreateDeviceBitmap(pdev, size, pdev->bitmap_format, &phys_mem, &base_mem, surface_id,
                                  DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);
     if (!hbitmap) {
+         DEBUG_PRINT((pdev, 3, "%s:%p CreateDeviceBitmap failed\n", __FUNCTION__, pdev));
         goto out_error2;
     }
 
@@ -1426,20 +1430,20 @@ VOID APIENTRY DrvDeleteDeviceBitmap(DHSURF dhsurf)
 
 void CountCall(PDev *pdev, int counter)
 {
-    if (pdev->Res->count_calls) {
+    if (pdev->count_calls) {
         int i;
 
-        pdev->Res->call_counters[counter]++;
-        if((++pdev->Res->total_calls % 500) == 0) {
-            DEBUG_PRINT((pdev, 0, "total eng calls is %u\n", pdev->Res->total_calls));
+        pdev->call_counters[counter]++;
+        if((++pdev->total_calls % 500) == 0) {
+            DEBUG_PRINT((pdev, 0, "total eng calls is %u\n", pdev->total_calls));
             for (i = 0; i < NUM_CALL_COUNTERS; i++) {
                 DEBUG_PRINT((pdev, 0, "%s count is %u\n",
-                             counters_info[i].name, pdev->Res->call_counters[i]));
+                             counters_info[i].name, pdev->call_counters[i]));
             }
         }
-        pdev->Res->count_calls = FALSE;
+        pdev->count_calls = FALSE;
     } else if (counters_info[counter].effective) {
-        pdev->Res->count_calls = TRUE;
+        pdev->count_calls = TRUE;
     }
 }
 
