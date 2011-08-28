@@ -307,6 +307,7 @@ int MoveAllSurfacesToVideoRam(PDev *pdev)
         if (surface_info->copy == NULL) {
             DEBUG_PRINT((pdev, 3, "%s: %p: %d: no copy buffer, ignored\n", __FUNCTION__,
                          pdev, surface_id));
+            continue;
         }
         if (!MoveSurfaceToVideoRam(pdev, surface_id)) {
             /* Some of the surfaces have not been moved to video ram.
