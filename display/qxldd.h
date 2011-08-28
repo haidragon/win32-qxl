@@ -200,6 +200,7 @@ struct SurfaceInfo {
     SIZEL       size;
     UINT8      *copy;
     ULONG       bitmap_format;
+    INT32       stride;
     union {
         PDev *pdev;
         SurfaceInfo *next_free;

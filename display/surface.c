@@ -187,7 +187,7 @@ HBITMAP CreateDeviceBitmap(PDev *pdev, SIZEL size, ULONG format, QXLPHYSICAL *ph
                     __FUNCTION__, pdev, surface_id));
         goto out_error2;
     }
-
+    surface_info->stride = stride;
     if (allocation_type != DEVICE_BITMAP_ALLOCATION_TYPE_SURF0) {
         SendSurfaceCreateCommand(pdev, surface_id, size, surface_format, -stride, *phys_mem, 0);
     }
@@ -318,6 +318,42 @@ int MoveAllSurfacesToVideoRam(PDev *pdev)
     return TRUE;
 }
 
+/* to_surface_id is exclusive */
+static void SendSurfaceRangeCreateCommand(PDev *pdev, UINT32 from_surface_id, UINT32 to_surface_id)
+{
+    UINT32 surface_id;
+
+    ASSERT(pdev, from_surface_id < to_surface_id);
+    ASSERT(pdev, to_surface_id <= pdev->n_surfaces);
+
+    for (surface_id = from_surface_id; surface_id < to_surface_id; surface_id++) {
+        SurfaceInfo *surface_info;
+        SURFOBJ *surf_obj;
+        QXLPHYSICAL phys_mem;
+        UINT32 surface_format;
+        UINT32 depth;
+
+        surface_info = GetSurfaceInfo(pdev, surface_id);
+        if (!surface_info->draw_area.base_mem) {
+            continue;
+        }
+
+        surf_obj = surface_info->draw_area.surf_obj;
+
+        if (!surf_obj) {
+            continue;
+        }
+
+        phys_mem = SurfaceToPhysical(pdev, surface_info->draw_area.base_mem);
+        BitmapFormatToDepthAndSurfaceFormat(surface_info->bitmap_format, &depth, &surface_format);
+
+        SendSurfaceCreateCommand(pdev, surface_id, surf_obj->sizlBitmap,
+                                 surface_format, -surface_info->stride, phys_mem,
+                                 /* the surface is still there, tell server not to erase */
+                                 1);
+    }
+}
+
 BOOL MoveAllSurfacesToRam(PDev *pdev)
 {
     UINT32 surface_id;
@@ -357,19 +393,9 @@ BOOL MoveAllSurfacesToRam(PDev *pdev)
             /* Send a create messsage for this surface - we previously did a destroy all. */
             EngFreeMem(surface_info->copy);
             surface_info->copy = NULL;
-            DEBUG_PRINT((pdev, 0, "%s: %d: EngModifySurface failed, sending create\n",
-                         __FUNCTION__, surface_id));
-            phys_mem = SurfaceToPhysical(pdev, surface_info->draw_area.base_mem);
-            /*
-             * TODO: bug. create_command should be send for all surfaces >= surface_id
-             *       since they stay in the pci-bar. Alternatively,
-             *       don't call destroy_all_surfaces, instead send destroy commands
-             *       for all surfaces with id < surface_id.
-             */
-            SendSurfaceCreateCommand(pdev, surface_id, surf_obj->sizlBitmap,
-                                     surface_info->bitmap_format, -surf_obj->lDelta, phys_mem,
-                                     /* the surface is still there, tell server not to erase */
-                                     1);
+            DEBUG_PRINT((pdev, 0, "%s: %d: EngModifySurface failed, sending create for %d-%d\n",
+                         __FUNCTION__, surface_id, surface_id, pdev->n_surfaces - 1));
+            SendSurfaceRangeCreateCommand(pdev, surface_id, pdev->n_surfaces);
             return FALSE;
         }
         QXLDelSurface(pdev, surface_info->draw_area.base_mem, DEVICE_BITMAP_ALLOCATION_TYPE_VRAM);

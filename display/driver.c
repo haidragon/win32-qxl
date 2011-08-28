@@ -1028,6 +1028,7 @@ static BOOL AssertModeDisable(PDev *pdev)
     async_io(pdev, ASYNCABLE_DESTROY_ALL_SURFACES, 0);
     /* move all surfaces from device to system memory */
     if (!MoveAllSurfacesToRam(pdev)) {
+        EnableQXLPrimarySurface(pdev);
         return FALSE;
     }
     if (!FlushRelease(pdev)) {
