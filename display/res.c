@@ -2534,7 +2534,7 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
     QXLOutput *output;
     QXLUpdateCmd *updat_cmd;
 
-    DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((pdev, 12, "%s UPDATE_CMD\n", __FUNCTION__));
 
     output = (QXLOutput *)AllocMem(pdev, sizeof(QXLOutput) + sizeof(QXLUpdateCmd));
     RESOURCE_TYPE(output, RESOURCE_TYPE_UPDATE);
@@ -2575,7 +2575,7 @@ void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
 
 void UpdateArea(PDev *pdev, RECTL *area, UINT32 surface_id)
 {
-    DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((pdev, 12, "%s IO\n", __FUNCTION__));
     CopyRect(pdev->update_area, area);
     *pdev->update_surface = surface_id;
     async_io(pdev, ASYNCABLE_UPDATE_AREA, 0);
