@@ -442,6 +442,25 @@ static _inline RingItem *RingGetTail(PDev *pdev, Ring *ring)
 #define WAIT_FOR_EVENT(pdev, event, timeout) EngWaitForSingleObject(event, timeout)
 #endif
 
+/* Helpers for dealing with ENG_TIME_FIELDS */
+static _inline ULONG64 eng_time_diff_ms(ENG_TIME_FIELDS *b, ENG_TIME_FIELDS *a)
+{
+    ULONG64 ret = 0;
+
+    ret += b->usMilliseconds - a->usMilliseconds;
+    ret += 1000 * (b->usSecond - a->usSecond);
+    ret += 60000 * (b->usMinute - a->usMinute);
+    ret += 3600000L * (b->usHour - a->usHour);
+    // don't get into gregorian calendar, just ignore more then a single day difference
+    if (b->usDay != a->usDay) {
+        ret += (3600L * 24L * 1000L);
+    }
+    return ret;
+}
+
+#define INTERRUPT_NOT_PRESENT_TIMEOUT_MS 2000L
+#define INTERRUPT_NOT_PRESENT_TIMEOUT_100NS (INTERRUPT_NOT_PRESENT_TIMEOUT_MS * 10000L)
+
 /* Write to an ioport. For some operations we support a new port that returns
  * immediatly, and completion is signaled by an interrupt that sets io_cmd_event.
  * If the pci_revision is >= QXL_REVISION_STABLE_V10, we support it, else do
@@ -449,10 +468,28 @@ static _inline RingItem *RingGetTail(PDev *pdev, Ring *ring)
  */
 static _inline void async_io(PDev *pdev, asyncable_t op, UCHAR val)
 {
+    ENG_TIME_FIELDS start, finish;
+    LARGE_INTEGER timeout;                      // 1 => 100 nanoseconds
+    ULONG64 millis;
+
     if (pdev->use_async) {
         EngAcquireSemaphore(pdev->io_sem);
         WRITE_PORT_UCHAR(pdev->asyncable[op][ASYNC], val);
-        WAIT_FOR_EVENT(pdev, pdev->io_cmd_event, NULL);
+        /* Our Interrupt may be taken from us unexpectedly, by a surprise removal.
+         * in which case this event will never be set. This happens only during WHQL
+         * tests (pnpdtest /surprise). So instead: Wait on a timer, if we fail, stop waiting, until
+         * we get reset. We use EngQueryLocalTime because there is no way to differentiate a return on
+         * timeout from a return on event set otherwise. */
+        timeout.QuadPart = -INTERRUPT_NOT_PRESENT_TIMEOUT_100NS; // negative  => relative
+        DEBUG_PRINT((pdev, 15, "WAIT_FOR_EVENT %d\n", (int)op));
+        EngQueryLocalTime(&start);
+        WAIT_FOR_EVENT(pdev, pdev->io_cmd_event, &timeout);
+        EngQueryLocalTime(&finish);
+        millis = eng_time_diff_ms(&finish, &start);
+        if (millis >= INTERRUPT_NOT_PRESENT_TIMEOUT_MS) {
+            pdev->use_async = 0;
+            DEBUG_PRINT((pdev, 0, "%s: timeout reached, disabling async io!\n", __FUNCTION__));
+        }
         EngReleaseSemaphore(pdev->io_sem);
         DEBUG_PRINT((pdev, 3, "finished async %d\n", (int)op));
     } else {
