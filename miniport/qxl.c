@@ -918,7 +918,7 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
     VP_STATUS error;
 
     PAGED_CODE();
-    DEBUG_PRINT((dev_ext, 0, "%s\n", __FUNCTION__));
+    DEBUG_PRINT((dev_ext, 0, "%s %d\n", __FUNCTION__, packet->IoControlCode));
 
     switch (packet->IoControlCode) {
     case IOCTL_VIDEO_QUERY_NUM_AVAIL_MODES:
