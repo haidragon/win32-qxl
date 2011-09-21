@@ -719,6 +719,7 @@ static BOOL PrepareHardware(PDev *pdev)
     }
 
     pdev->pci_revision = dev_info.pci_revision;
+    pdev->use_async = (pdev->pci_revision >= QXL_REVISION_STABLE_V10);
     pdev->cmd_ring = dev_info.cmd_ring;
     pdev->cursor_ring = dev_info.cursor_ring;
     pdev->release_ring = dev_info.release_ring;

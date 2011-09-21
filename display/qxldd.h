@@ -287,6 +287,7 @@ typedef struct PDev {
     HSEMAPHORE io_sem;
     PUCHAR memslot_del_port;
     PUCHAR flush_release_port;
+    UINT32 use_async;
 
     UINT8* primary_memory_start;
     UINT32 primary_memory_size;
@@ -448,7 +449,7 @@ static _inline RingItem *RingGetTail(PDev *pdev, Ring *ring)
  */
 static _inline void async_io(PDev *pdev, asyncable_t op, UCHAR val)
 {
-    if (pdev->pci_revision >= QXL_REVISION_STABLE_V10) {
+    if (pdev->use_async) {
         EngAcquireSemaphore(pdev->io_sem);
         WRITE_PORT_UCHAR(pdev->asyncable[op][ASYNC], val);
         WAIT_FOR_EVENT(pdev, pdev->io_cmd_event, NULL);
