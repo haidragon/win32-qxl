@@ -43,6 +43,8 @@ BOOL APIENTRY DrvTextOut(SURFOBJ *surf, STROBJ *str, FONTOBJ *font, CLIPOBJ *cli
         return FALSE;
     }
 
+    PUNT_IF_DISABLED(pdev);
+
     surface_id = GetSurfaceId(surf);
 
     CountCall(pdev, CALL_COUNTER_TEXT_OUT);
