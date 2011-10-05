@@ -458,7 +458,7 @@ static _inline ULONG64 eng_time_diff_ms(ENG_TIME_FIELDS *b, ENG_TIME_FIELDS *a)
     return ret;
 }
 
-#define INTERRUPT_NOT_PRESENT_TIMEOUT_MS 2000L
+#define INTERRUPT_NOT_PRESENT_TIMEOUT_MS 60000L
 #define INTERRUPT_NOT_PRESENT_TIMEOUT_100NS (INTERRUPT_NOT_PRESENT_TIMEOUT_MS * 10000L)
 
 /* Write to an ioport. For some operations we support a new port that returns
