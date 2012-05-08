@@ -12,6 +12,9 @@ if not DEFINED BUILD_ALT_DIR (
  echo BUILD_ALT_DIR not defined. Please run in a WinDDK Build Environment.
  goto exit
 )
+if not DEFINED SPICE_COMMON_DIR (
+ set SPICE_COMMON_DIR=%CD%\spice-protocol
+)
 
 set TARGET=install_%BUILD_ALT_DIR%
 echo TARGET=%TARGET%
