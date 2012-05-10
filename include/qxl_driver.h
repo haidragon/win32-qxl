@@ -23,6 +23,7 @@
 #define _H_QXL_DRIVER
 
 #include <spice\qxl_dev.h>
+#include <spice\qxl_windows.h>
 
 #if (WINVER < 0x0501)
 #include "wdmhelper.h"
@@ -30,11 +31,15 @@
 
 enum {
     FIRST_AVIL_IOCTL_FUNC = 0x800,
-    QXL_GET_INFO_FUNC = FIRST_AVIL_IOCTL_FUNC
+    QXL_GET_INFO_FUNC = FIRST_AVIL_IOCTL_FUNC,
+    QXL_SET_CUSTOM_DISPLAY
 };
 
 #define IOCTL_QXL_GET_INFO \
     CTL_CODE(FILE_DEVICE_VIDEO, QXL_GET_INFO_FUNC, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+#define IOCTL_QXL_SET_CUSTOM_DISPLAY \
+    CTL_CODE(FILE_DEVICE_VIDEO, QXL_SET_CUSTOM_DISPLAY, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 #define QXL_DRIVER_INFO_VERSION 3
 
@@ -115,7 +120,6 @@ typedef struct QXLDriverInfo {
 
     UINT64 fb_phys;
 } QXLDriverInfo;
-
 
 #endif
 

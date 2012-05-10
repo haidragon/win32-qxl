@@ -83,6 +83,7 @@ typedef struct QXLExtension {
 
     ULONG current_mode;
     ULONG n_modes;
+    ULONG custom_mode;
     PVIDEO_MODE_INFORMATION modes;
 
     PEVENT display_event;
@@ -442,6 +443,69 @@ VP_STATUS Prob(QXLExtension *dev, VIDEO_PORT_CONFIG_INFO *conf_info,
 }
 
 #if defined(ALLOC_PRAGMA)
+void FillVidModeBPP(VIDEO_MODE_INFORMATION *pMode, ULONG bitsR, ULONG bitsG, ULONG bitsB,
+                    ULONG maskR, ULONG maskG, ULONG maskB);
+#pragma alloc_text(PAGE, FillVidModeBPP)
+#endif
+
+/* Fills given video mode BPP related fields */
+void FillVidModeBPP(VIDEO_MODE_INFORMATION *pMode, ULONG bitsR, ULONG bitsG, ULONG bitsB,
+                    ULONG maskR, ULONG maskG, ULONG maskB)
+{
+    pMode->NumberRedBits   = bitsR;
+    pMode->NumberGreenBits = bitsG;
+    pMode->NumberBlueBits  = bitsB;
+    pMode->RedMask         = maskR;
+    pMode->GreenMask       = maskG;
+    pMode->BlueMask        = maskB;
+}
+
+#if defined(ALLOC_PRAGMA)
+VP_STATUS FillVidModeInfo(VIDEO_MODE_INFORMATION *pMode, ULONG xres, ULONG yres, ULONG bpp, ULONG index);
+#pragma alloc_text(PAGE, FillVidModeInfo)
+#endif
+/* Fills given video mode structure */
+VP_STATUS FillVidModeInfo(VIDEO_MODE_INFORMATION *pMode, ULONG xres, ULONG yres, ULONG bpp, ULONG index)
+{
+    if (xres <= 0 || yres <= 0)
+        return ERROR_INVALID_DATA;
+
+    VideoPortZeroMemory(pMode, sizeof(VIDEO_MODE_INFORMATION));
+
+    /*Common entries*/
+    pMode->Length                       = sizeof(VIDEO_MODE_INFORMATION);
+    pMode->ModeIndex                    = index;
+    pMode->VisScreenWidth               = xres;
+    pMode->VisScreenHeight              = yres;
+    pMode->ScreenStride                 = xres * ((bpp + 7) / 8);
+    pMode->NumberOfPlanes               = 1;
+    pMode->BitsPerPlane                 = bpp;
+    pMode->Frequency                    = 60;
+    pMode->XMillimeter                  = 320;
+    pMode->YMillimeter                  = 240;
+    pMode->VideoMemoryBitmapWidth       = xres;
+    pMode->VideoMemoryBitmapHeight      = yres;
+    pMode->DriverSpecificAttributeFlags = 0;
+    pMode->AttributeFlags               = VIDEO_MODE_GRAPHICS | VIDEO_MODE_COLOR;
+
+    /*BPP related entries*/
+    switch (bpp)
+    {
+        case 16:
+            FillVidModeBPP(pMode, 5, 6, 5, 0xF800, 0x7E0, 0x1F);
+            break;
+        case 24:
+        case 32:
+            FillVidModeBPP(pMode, 8, 8, 8, 0xFF0000, 0xFF00, 0xFF);
+            break;
+        default:
+            return ERROR_INVALID_DATA;
+    }
+
+    return NO_ERROR;
+}
+
+#if defined(ALLOC_PRAGMA)
 VP_STATUS SetVideoModeInfo(QXLExtension *dev, PVIDEO_MODE_INFORMATION video_mode, QXLMode *qxl_mode);
 #pragma alloc_text(PAGE, SetVideoModeInfo)
 #endif
@@ -550,7 +614,7 @@ VP_STATUS InitModes(QXLExtension *dev)
         return ERROR_NOT_ENOUGH_MEMORY;
     }
 #endif
-    VideoPortZeroMemory(modes_info, sizeof(VIDEO_MODE_INFORMATION) * n_modes);
+    VideoPortZeroMemory(modes_info, sizeof(VIDEO_MODE_INFORMATION) * n_modes + 2);
     for (i = 0; i < n_modes; i++) {
         error = SetVideoModeInfo(dev, &modes_info[i], &modes->modes[i]);
         if (error != NO_ERROR) {
@@ -559,7 +623,17 @@ VP_STATUS InitModes(QXLExtension *dev)
             return error;
         }
     }
-    dev->n_modes = n_modes;
+
+    /* 2 dummy modes for custom display resolution */
+    /* This is necessary to bypass Windows mode index check, that
+       would prevent reusing the same index */
+    dev->custom_mode = n_modes;
+    memcpy(&modes_info[n_modes], &modes_info[0], sizeof(VIDEO_MODE_INFORMATION));
+    modes_info[n_modes].ModeIndex = n_modes;
+    memcpy(&modes_info[n_modes + 1], &modes_info[0], sizeof(VIDEO_MODE_INFORMATION));
+    modes_info[n_modes + 1].ModeIndex = n_modes + 1;
+
+    dev->n_modes = n_modes + 2;
     dev->modes = modes_info;
     DEBUG_PRINT((dev, 0, "%s OK\n", __FUNCTION__));
     return NO_ERROR;
@@ -912,6 +986,20 @@ PVIDEO_MODE_INFORMATION FindMode(QXLExtension *dev_ext, ULONG mode)
     return NULL;
 }
 
+static VP_STATUS SetCustomDisplay(QXLExtension *dev_ext, QXLEscapeSetCustomDisplay *custom_display)
+{
+    /* alternate custom mode index */
+    if (dev_ext->custom_mode == (dev_ext->n_modes - 1))
+        dev_ext->custom_mode = dev_ext->n_modes - 2;
+    else
+        dev_ext->custom_mode = dev_ext->n_modes - 1;
+
+    return FillVidModeInfo(&dev_ext->modes[dev_ext->custom_mode],
+                           custom_display->xres, custom_display->yres,
+                           custom_display->bpp,
+                           dev_ext->custom_mode);
+}
+
 BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
 {
     QXLExtension *dev_ext = dev_extension;
@@ -1102,6 +1190,25 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             driver_info->dev_id = dev_ext->rom->id;
         }
         break;
+
+    case IOCTL_QXL_SET_CUSTOM_DISPLAY: {
+            QXLEscapeSetCustomDisplay *custom_display;
+            DEBUG_PRINT((dev_ext, 0, "%s: IOCTL_QXL_SET_CUSTOM_DISPLAY\n", __FUNCTION__));
+
+            if (packet->InputBufferLength < (packet->StatusBlock->Information =
+                                             sizeof(QXLEscapeSetCustomDisplay))) {
+                error = ERROR_INSUFFICIENT_BUFFER;
+                goto err;
+            }
+
+            custom_display = packet->InputBuffer;
+            DEBUG_PRINT((dev_ext, 0, "%s: %dx%d@%d\n", __FUNCTION__,
+                         custom_display->xres, custom_display->yres,
+                         custom_display->bpp));
+            SetCustomDisplay(dev_ext, custom_display);
+        }
+        break;
+
     default:
         DEBUG_PRINT((dev_ext, 0, "%s: invalid command 0x%lx\n", __FUNCTION__, packet->IoControlCode));
         error = ERROR_INVALID_FUNCTION;

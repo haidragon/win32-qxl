@@ -45,6 +45,7 @@
 
 static DRVFN drv_calls[] = {
     {INDEX_DrvDisableDriver, (PFN)DrvDisableDriver},
+    {INDEX_DrvEscape, (PFN)DrvEscape},
     {INDEX_DrvEnablePDEV, (PFN)DrvEnablePDEV},
     {INDEX_DrvDisablePDEV, (PFN)DrvDisablePDEV},
     {INDEX_DrvCompletePDEV, (PFN)DrvCompletePDEV},
@@ -250,6 +251,37 @@ BOOL DrvEnableDriver(ULONG engine_version, ULONG enable_data_size, PDRVENABLEDAT
 #endif
     DEBUG_PRINT((NULL, 1, "%s: end\n", __FUNCTION__));
     return TRUE;
+}
+
+ULONG DrvEscape(SURFOBJ *pso, ULONG iEsc, ULONG cjIn, PVOID pvIn,
+                ULONG cjOut, PVOID pvOut)
+{
+    PDev* pdev = pso ? (PDev*)pso->dhpdev : NULL;
+    int RetVal = -1;
+
+    switch (iEsc) {
+    case QXL_ESCAPE_SET_CUSTOM_DISPLAY: {
+        ULONG length;
+
+        DEBUG_PRINT((pdev, 1, "set custom display %p\n", pdev));
+        if (pdev == NULL)
+            break;
+
+        if (EngDeviceIoControl(pdev->driver, IOCTL_QXL_SET_CUSTOM_DISPLAY,
+                               pvIn, cjIn, NULL, 0, &length)) {
+            DEBUG_PRINT((pdev, 0, "%s: IOCTL_QXL_SET_CUSTOM_DISPLAY failed\n", __FUNCTION__));
+            break;
+        }
+        RetVal = 1;
+        break;
+    }
+    default:
+        DEBUG_PRINT((NULL, 1, "%s: unhandled escape code %d\n", __FUNCTION__, iEsc));
+        RetVal = 0;
+    }
+
+    DEBUG_PRINT((NULL, 1, "%s: end\n", __FUNCTION__));
+    return RetVal;
 }
 
 VOID DrvDisableDriver(VOID)
