@@ -600,6 +600,7 @@ VP_STATUS InitModes(QXLExtension *dev)
         return ERROR_INVALID_DATA;
     }
 
+    n_modes += 2;
 #if (WINVER < 0x0501) //Win2K
     error = VideoPortAllocateBuffer(dev, n_modes * sizeof(VIDEO_MODE_INFORMATION), &modes_info);
 
@@ -614,8 +615,8 @@ VP_STATUS InitModes(QXLExtension *dev)
         return ERROR_NOT_ENOUGH_MEMORY;
     }
 #endif
-    VideoPortZeroMemory(modes_info, sizeof(VIDEO_MODE_INFORMATION) * n_modes + 2);
-    for (i = 0; i < n_modes; i++) {
+    VideoPortZeroMemory(modes_info, sizeof(VIDEO_MODE_INFORMATION) * n_modes);
+    for (i = 0; i < modes->n_modes; i++) {
         error = SetVideoModeInfo(dev, &modes_info[i], &modes->modes[i]);
         if (error != NO_ERROR) {
             VideoPortFreePool(dev, modes_info);
@@ -627,13 +628,14 @@ VP_STATUS InitModes(QXLExtension *dev)
     /* 2 dummy modes for custom display resolution */
     /* This is necessary to bypass Windows mode index check, that
        would prevent reusing the same index */
-    dev->custom_mode = n_modes;
-    memcpy(&modes_info[n_modes], &modes_info[0], sizeof(VIDEO_MODE_INFORMATION));
-    modes_info[n_modes].ModeIndex = n_modes;
-    memcpy(&modes_info[n_modes + 1], &modes_info[0], sizeof(VIDEO_MODE_INFORMATION));
-    modes_info[n_modes + 1].ModeIndex = n_modes + 1;
+    dev->custom_mode = modes->n_modes;
 
-    dev->n_modes = n_modes + 2;
+    for (i = dev->custom_mode; i <= dev->custom_mode + 1; ++i) {
+        memcpy(&modes_info[i], &modes_info[0], sizeof(VIDEO_MODE_INFORMATION));
+        modes_info[i].ModeIndex = i;
+    }
+
+    dev->n_modes = n_modes;
     dev->modes = modes_info;
     DEBUG_PRINT((dev, 0, "%s OK\n", __FUNCTION__));
     return NO_ERROR;
