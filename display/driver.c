@@ -843,6 +843,10 @@ static BOOL PrepareHardware(PDev *pdev)
 
     pdev->dev_id = dev_info.dev_id;
 
+    pdev->create_non_primary_surfaces = dev_info.create_non_primary_surfaces;
+    DEBUG_PRINT((pdev, 1, "%s: create_non_primary_surfaces = %d\n", __FUNCTION__,
+                 pdev->create_non_primary_surfaces));
+
     CreateVRamSlot(pdev);
 
     DEBUG_PRINT((NULL, 1, "%s: 0x%lx exit: 0x%lx %ul\n", __FUNCTION__, pdev,
@@ -1408,6 +1412,10 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
     HBITMAP hbitmap;
 
     pdev = (PDev *)dhpdev;
+
+    if (!pdev->create_non_primary_surfaces) {
+        return FALSE;
+    }
 
     if (!pdev->vram_slot_initialized || pdev->bitmap_format != format || pdev->fb == 0) {
         DEBUG_PRINT((pdev, 3, "%s failed: %p: slot_initialized %d, format(%d,%d), fb %p\n",

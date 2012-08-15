@@ -220,6 +220,7 @@ typedef struct PDev {
     SIZEL resolution;
     UINT32 max_bitmap_size;
     ULONG bitmap_format;
+    UINT8 create_non_primary_surfaces;
 
     ULONG fb_size;
     BYTE* fb;

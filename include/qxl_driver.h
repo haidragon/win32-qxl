@@ -119,6 +119,8 @@ typedef struct QXLDriverInfo {
     UINT32 n_surfaces;
 
     UINT64 fb_phys;
+
+    UINT8 create_non_primary_surfaces;
 } QXLDriverInfo;
 
 #endif

@@ -95,6 +95,8 @@ typedef struct QXLExtension {
 
     char *log_buf;
     PUCHAR log_port;
+
+    UINT8 create_non_primary_surfaces;
 } QXLExtension;
 
 #define QXL_ALLOC_TAG '_lxq'
@@ -1002,6 +1004,47 @@ static VP_STATUS SetCustomDisplay(QXLExtension *dev_ext, QXLEscapeSetCustomDispl
                            dev_ext->custom_mode);
 }
 
+VP_STATUS QXLRegistryCallback(
+  PVOID HwDeviceExtension,
+  PVOID Context,
+  PWSTR ValueName,
+  PVOID ValueData,
+  ULONG ValueLength
+)
+{
+    QXLExtension *dev_ext = HwDeviceExtension;
+    ULONG *key_ret = (ULONG *)Context;
+
+    DEBUG_PRINT((dev_ext, 60, "%s: length %d, first byte %d\n", __FUNCTION__,
+                ValueLength, (UINT8)ValueData));
+
+    if (key_ret) {
+        *key_ret = *(PULONG)ValueData;
+    }
+    return NO_ERROR;
+}
+
+static UINT8 check_non_primary_surfaces_registry_key(QXLExtension *dev_ext)
+{
+    VP_STATUS ret;
+    ULONG key_ret;
+
+    ret = VideoPortGetRegistryParameters(
+              dev_ext,
+              L"DisableSurfaces",
+              FALSE,
+              QXLRegistryCallback,
+              &key_ret);
+    if (ret == ERROR_INVALID_PARAMETER) {
+        dev_ext->create_non_primary_surfaces = 1;
+        DEBUG_PRINT((dev_ext, 0, "%s: CreateNonPrimarySurfaces key doesn't exist, default to 1\n",
+                    __FUNCTION__));
+    } else {
+        dev_ext->create_non_primary_surfaces = 0;
+    }
+    return dev_ext->create_non_primary_surfaces;
+}
+
 BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
 {
     QXLExtension *dev_ext = dev_extension;
@@ -1187,9 +1230,11 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
 
             driver_info->n_surfaces = dev_ext->rom->n_surfaces;
 
-	    driver_info->fb_phys = dev_ext->vram_physical.QuadPart;
+            driver_info->fb_phys = dev_ext->vram_physical.QuadPart;
 
             driver_info->dev_id = dev_ext->rom->id;
+
+            driver_info->create_non_primary_surfaces = check_non_primary_surfaces_registry_key(dev_ext);
         }
         break;
 
