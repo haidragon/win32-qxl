@@ -494,7 +494,7 @@ VP_STATUS FillVidModeInfo(VIDEO_MODE_INFORMATION *pMode, ULONG xres, ULONG yres,
     switch (bpp)
     {
         case 16:
-            FillVidModeBPP(pMode, 5, 6, 5, 0xF800, 0x7E0, 0x1F);
+            FillVidModeBPP(pMode, 5, 5, 5, 0x7C00, 0x3E0, 0x1F);
             break;
         case 24:
         case 32:
