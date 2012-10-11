@@ -620,13 +620,13 @@ static VOID HideMouse(PDev *pdev)
 }
 
 static VOID CreatePrimarySurface(PDev *pdev, UINT32 depth, UINT32 format,
-                                 UINT32 width, UINT32 height,
+                                 UINT32 width, UINT32 height, INT32 stride,
                                  QXLPHYSICAL phys_mem)
 {
     pdev->primary_surface_create->format = format;
     pdev->primary_surface_create->width = width;
     pdev->primary_surface_create->height = height;
-    pdev->primary_surface_create->stride = -(INT32)width * (depth / 8);
+    pdev->primary_surface_create->stride = -stride;
     pdev->primary_surface_create->mem = phys_mem;
 
     pdev->primary_surface_create->flags = 0;
@@ -898,7 +898,8 @@ VOID EnableQXLPrimarySurface(PDev *pdev)
     };
 
     CreatePrimarySurface(pdev, depth, format,
-                         pdev->resolution.cx, pdev->resolution.cy, pdev->surf_phys);
+                         pdev->resolution.cx, pdev->resolution.cy,
+                         pdev->stride, pdev->surf_phys);
     pdev->surf_enable = TRUE;
 }
 

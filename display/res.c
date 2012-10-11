@@ -698,7 +698,7 @@ _inline void GetSurfaceMemory(PDev *pdev, UINT32 x, UINT32 y, UINT32 depth, INT3
         ASSERT(pdev, x * y * depth /8 <= pdev->primary_memory_size);
         *base_mem = pdev->primary_memory_start;
         *phys_mem = PA(pdev, *base_mem, pdev->main_mem_slot);
-        *stride = x * depth / 8;
+        *stride = (x * depth / 8 + 3) & ~0x3; /* Pixman requires 4 byte aligned stride */
         break;
     case DEVICE_BITMAP_ALLOCATION_TYPE_DEVRAM:
         *stride = x * depth / 8;

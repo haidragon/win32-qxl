@@ -469,6 +469,8 @@ VP_STATUS FillVidModeInfo(VIDEO_MODE_INFORMATION *pMode, ULONG xres, ULONG yres,
 /* Fills given video mode structure */
 VP_STATUS FillVidModeInfo(VIDEO_MODE_INFORMATION *pMode, ULONG xres, ULONG yres, ULONG bpp, ULONG index)
 {
+    unsigned bytes_pp = (bpp + 7) / 8;
+
     if (xres <= 0 || yres <= 0)
         return ERROR_INVALID_DATA;
 
@@ -479,7 +481,7 @@ VP_STATUS FillVidModeInfo(VIDEO_MODE_INFORMATION *pMode, ULONG xres, ULONG yres,
     pMode->ModeIndex                    = index;
     pMode->VisScreenWidth               = xres;
     pMode->VisScreenHeight              = yres;
-    pMode->ScreenStride                 = xres * ((bpp + 7) / 8);
+    pMode->ScreenStride                 = (xres * bytes_pp + 3) & ~0x3; /* Pixman requirement */
     pMode->NumberOfPlanes               = 1;
     pMode->BitsPerPlane                 = bpp;
     pMode->Frequency                    = 60;
