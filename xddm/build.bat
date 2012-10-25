@@ -13,7 +13,7 @@ if not DEFINED BUILD_ALT_DIR (
  goto exit
 )
 if not DEFINED SPICE_COMMON_DIR (
- set SPICE_COMMON_DIR=%CD%\spice-protocol
+ set SPICE_COMMON_DIR=%CD%\..\spice-protocol
 )
 
 set TARGET=install_%BUILD_ALT_DIR%
