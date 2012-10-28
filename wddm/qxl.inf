@@ -1,0 +1,30 @@
+[Version]
+Signature = "$CHICAGO$"
+DriverVer =10/25/2012,0.0.0.1
+Provider =%RHAT%
+Class =Display
+ClassGUID ={4d36e968-e325-11ce-bfc1-08002be10319}
+
+[DestinationDirs]
+DefaultDestDir =11	; system32
+qxl.KernelMode =12	; drivers
+qxl.UserMode =11	; system32
+
+[Manufacturer]
+%RHAT% =qxl
+
+[q.NTx86]
+%RHAT% %QXL% =dd.qxl, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4
+
+[dd.qxl]
+CopyFiles =qxl.KernelMode, qxl.UserMode
+
+[qxl.KernelMode]
+qxlwddm.sys
+
+[qxl.UserMode]
+qxlum.dll
+
+[Strings]
+RHAT ="Red Hat"
+QXL = "QXL"
