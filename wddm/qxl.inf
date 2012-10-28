@@ -11,7 +11,7 @@ qxl.KernelMode =12	; drivers
 qxl.UserMode =11	; system32
 
 [Manufacturer]
-%RHAT% =qxl
+%RHAT% =q, NTx86
 
 [q.NTx86]
 %RHAT% %QXL% =dd.qxl, PCI\VEN_1b36&DEV_0100&SUBSYS_11001af4
