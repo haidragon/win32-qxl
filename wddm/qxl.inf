@@ -1,9 +1,9 @@
 [Version]
 Signature = "$CHICAGO$"
-DriverVer =10/25/2012,0.0.0.1
+DriverVer =10/28/2012,0.0.0.1
 Provider =%RHAT%
 Class =Display
-ClassGUID ={4d36e968-e325-11ce-bfc1-08002be10319}
+ClassGUID = {4d36e968-e325-11ce-bfc1-08002be10318}
 
 [DestinationDirs]
 DefaultDestDir =11	; system32
@@ -25,6 +25,14 @@ qxlwddm.sys
 [qxl.UserMode]
 qxlum.dll
 
+[SourceDisksNames]
+1 = %DiskId%
+
+[SourceDisksFiles]
+qxlwddm.sys = 1
+qxlum.dll = 1
+
 [Strings]
 RHAT ="Red Hat"
 QXL = "QXL"
+DiskId = "Windows 2000 Driver Installation Disk"
