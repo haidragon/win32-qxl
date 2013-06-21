@@ -1871,7 +1871,11 @@ static _inline Resource *GetBitmapImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *col
     DEBUG_PRINT((pdev, 12, "%s\n", __FUNCTION__));
     ASSERT(pdev, width > 0 && height > 0);
 
-    ASSERT(pdev, BITS_BUF_MAX > line_size);
+    if (line_size >= BITS_BUF_MAX) {
+        DEBUG_PRINT((pdev, 0, "%s: line size (%u) exceeds max (%u)\n", __FUNCTION__,
+                     line_size, BITS_BUF_MAX));
+        return NULL;
+    }
     alloc_size = BITMAP_ALLOC_BASE + BITS_BUF_MAX - BITS_BUF_MAX % line_size;
     alloc_size = MIN(BITMAP_ALLOC_BASE + height * line_size, alloc_size);
     image_res = AllocMem(pdev, MSPACE_TYPE_DEVRAM, alloc_size);
@@ -2305,6 +2309,9 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
                                    src, line_size, key))) {
         image_res = GetBitmapImage(pdev, surf, color_trans, !!cache_image, width, height, format,
                                    src, line_size, key);
+        if (!image_res) {
+            return FALSE;
+        }
     }
     internal = (InternalImage *)image_res->res;
     if (high_bits_set) {
@@ -2435,6 +2442,9 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
                                    SPICE_BITMAP_FMT_RGBA, src, width << 2, key))) {
         image_res = GetBitmapImage(pdev, surf, NULL, !!cache_image, width, height,
                                    SPICE_BITMAP_FMT_RGBA, src, width << 2, key);
+        if (!image_res) {
+            return FALSE;
+        }
     }
     internal = (InternalImage *)image_res->res;
     if ((internal->cache = cache_image)) {
