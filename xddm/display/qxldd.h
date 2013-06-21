@@ -472,9 +472,19 @@ static _inline void async_io(PDev *pdev, asyncable_t op, UCHAR val)
     ENG_TIME_FIELDS start, finish;
     LARGE_INTEGER timeout;                      // 1 => 100 nanoseconds
     ULONG64 millis;
+    BOOL is_async = FALSE;
+    /*
+     * calling DEBUG_PRINT after locking io_sem can cause deadlock because
+     * DebugPrintV locks print_sem and then io_sem. Instead, we defer the
+     * the DEBUG_PRINT calls.
+     */
+    BOOL error_timeout = FALSE;
+    BOOL error_bad_sync = FALSE;
 
+    DEBUG_PRINT((pdev, 3, "%s: start io op %d\n", __FUNCTION__, (int)op));
+    EngAcquireSemaphore(pdev->io_sem);
     if (pdev->use_async) {
-        EngAcquireSemaphore(pdev->io_sem);
+        is_async = TRUE;
         WRITE_PORT_UCHAR(pdev->asyncable[op][ASYNC], val);
         /* Our Interrupt may be taken from us unexpectedly, by a surprise removal.
          * in which case this event will never be set. This happens only during WHQL
@@ -482,25 +492,29 @@ static _inline void async_io(PDev *pdev, asyncable_t op, UCHAR val)
          * we get reset. We use EngQueryLocalTime because there is no way to differentiate a return on
          * timeout from a return on event set otherwise. */
         timeout.QuadPart = -INTERRUPT_NOT_PRESENT_TIMEOUT_100NS; // negative  => relative
-        DEBUG_PRINT((pdev, 15, "WAIT_FOR_EVENT %d\n", (int)op));
         EngQueryLocalTime(&start);
         WAIT_FOR_EVENT(pdev, pdev->io_cmd_event, &timeout);
         EngQueryLocalTime(&finish);
         millis = eng_time_diff_ms(&finish, &start);
         if (millis >= INTERRUPT_NOT_PRESENT_TIMEOUT_MS) {
+            error_timeout = TRUE;
             pdev->use_async = 0;
-            DEBUG_PRINT((pdev, 0, "%s: timeout reached, disabling async io!\n", __FUNCTION__));
         }
-        EngReleaseSemaphore(pdev->io_sem);
-        DEBUG_PRINT((pdev, 3, "finished async %d\n", (int)op));
     } else {
+        is_async = FALSE;
         if (pdev->asyncable[op][SYNC] == NULL) {
-            DEBUG_PRINT((pdev, 0, "ERROR: trying calling sync io on NULL port %d\n", op));
+            error_bad_sync = TRUE;
         } else {
-            EngAcquireSemaphore(pdev->io_sem);
             WRITE_PORT_UCHAR(pdev->asyncable[op][SYNC], val);
-            EngReleaseSemaphore(pdev->io_sem);
         }
+    }
+    EngReleaseSemaphore(pdev->io_sem);
+    if (error_timeout) {
+        DEBUG_PRINT((pdev, 0, "%s: timeout reached, disabling async io!\n", __FUNCTION__));
+    } else if (error_bad_sync) {
+        DEBUG_PRINT((pdev, 0, "%s: ERROR: trying calling sync io on NULL port %d\n", __FUNCTION__, op));
+    } else {
+        DEBUG_PRINT((pdev, 3, "%s: finished op %d async %d\n", __FUNCTION__, (int)op, is_async));
     }
 }
 
