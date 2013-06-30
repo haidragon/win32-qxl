@@ -994,16 +994,29 @@ PVIDEO_MODE_INFORMATION FindMode(QXLExtension *dev_ext, ULONG mode)
 
 static VP_STATUS SetCustomDisplay(QXLExtension *dev_ext, QXLEscapeSetCustomDisplay *custom_display)
 {
+    VP_STATUS ret;
+    uint32_t xres = custom_display->xres;
+    uint32_t yres = custom_display->yres;
+    uint32_t bpp = custom_display->bpp;
+
     /* alternate custom mode index */
     if (dev_ext->custom_mode == (dev_ext->n_modes - 1))
         dev_ext->custom_mode = dev_ext->n_modes - 2;
     else
         dev_ext->custom_mode = dev_ext->n_modes - 1;
 
-    return FillVidModeInfo(&dev_ext->modes[dev_ext->custom_mode],
-                           custom_display->xres, custom_display->yres,
-                           custom_display->bpp,
-                           dev_ext->custom_mode);
+    if ((xres * yres * bpp / 8) > dev_ext->rom->surface0_area_size) {
+        DEBUG_PRINT((dev_ext, 0, "%s: Mode (%dx%d#%d) doesn't fit in memory (%d)\n",
+                    __FUNCTION__, xres, yres, bpp, dev_ext->rom->surface0_area_size));
+        return ERROR_NOT_ENOUGH_MEMORY;
+    }
+
+    ret = FillVidModeInfo(&dev_ext->modes[dev_ext->custom_mode],
+                          custom_display->xres, custom_display->yres,
+                          custom_display->bpp,
+                          dev_ext->custom_mode);
+    DEBUG_PRINT((dev_ext, 0, "%s: Returning %d\n", __FUNCTION__, ret));
+    return ret;
 }
 
 VP_STATUS QXLRegistryCallback(
@@ -1254,7 +1267,10 @@ BOOLEAN StartIO(PVOID dev_extension, PVIDEO_REQUEST_PACKET packet)
             DEBUG_PRINT((dev_ext, 0, "%s: %dx%d@%d\n", __FUNCTION__,
                          custom_display->xres, custom_display->yres,
                          custom_display->bpp));
-            SetCustomDisplay(dev_ext, custom_display);
+            error = SetCustomDisplay(dev_ext, custom_display);
+            if (error != NO_ERROR) {
+                goto err;
+            }
         }
         break;
 
