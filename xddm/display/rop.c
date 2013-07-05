@@ -1647,7 +1647,7 @@ BOOL APIENTRY DrvAlphaBlend(SURFOBJ *dest, SURFOBJ *src, CLIPOBJ *clip, XLATEOBJ
         ASSERT(pdev, src->iBitmapFormat == BMF_32BPP);
         if (!QXLGetAlphaBitmap(pdev, drawable, &drawable->u.alpha_blend.src_bitmap, src,
                                &drawable->u.alpha_blend.src_area,
-                               &drawable->surfaces_dest[0])) {
+                               &drawable->surfaces_dest[0], color_trans)) {
             DEBUG_PRINT((pdev, 0, "%s: QXLGetAlphaBitmap failed\n", __FUNCTION__));
             ReleaseOutput(pdev, drawable->release_info.id);
             return FALSE;

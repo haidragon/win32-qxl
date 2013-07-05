@@ -2070,7 +2070,8 @@ BOOL QXLCheckIfCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans)
     return FALSE;
 }
 
-static CacheImage *GetCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans, int high_bits_set, UINT32 *hash_key)
+static CacheImage *GetCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_trans,
+                                 BOOL has_alpha, BOOL high_bits_set, UINT32 *hash_key)
 {
     CacheImage *cache_image;
     UINT64 gdi_unique;
@@ -2085,6 +2086,10 @@ static CacheImage *GetCacheImage(PDev *pdev, SURFOBJ *surf, XLATEOBJ *color_tran
         return FALSE;
     }
 
+    if (has_alpha) {
+        ASSERT(pdev, surf->iBitmapFormat == BMF_32BPP);
+        format = SPICE_BITMAP_FMT_RGBA;
+    }
     if (!ImageKeyGet(pdev, surf->hsurf, gdi_unique, &key)) {
         key = GetHash(surf->pvScan0, surf->sizlBitmap.cx, surf->sizlBitmap.cy, format,
                       high_bits_set, line_size, surf->lDelta, color_trans);
@@ -2225,7 +2230,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
                                  &high_bits_set) &&
             !high_bits_set) {
             return QXLGetAlphaBitmap(pdev, drawable, image_phys,
-                                     surf, area, surface_dest);
+                                     surf, area, surface_dest, color_trans);
         }
     }
 
@@ -2238,7 +2243,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
                  surf->iBitmapFormat));
 
     if (use_cache) {
-        cache_image = GetCacheImage(pdev, surf, color_trans, high_bits_set, hash_key);
+        cache_image = GetCacheImage(pdev, surf, color_trans, FALSE, high_bits_set, hash_key);
         if (cache_image && cache_image->image) {
             DEBUG_PRINT((pdev, 11, "%s: cached image found %u\n", __FUNCTION__, cache_image->key));
             internal = cache_image->image;
@@ -2331,7 +2336,7 @@ BOOL QXLGetBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys, SU
 }
 
 BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phys,
-                       SURFOBJ *surf, QXLRect *area, INT32 *surface_dest)
+                       SURFOBJ *surf, QXLRect *area, INT32 *surface_dest, XLATEOBJ *color_trans)
 {
     Resource *image_res;
     InternalImage *internal;
@@ -2347,10 +2352,11 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
            area->top >= 0 && area->bottom <= surf->sizlBitmap.cy);
 
     DEBUG_PRINT((pdev, 11, "%s: iUniq=%x DONTCACHE=%x w=%d h=%d cx=%d cy=%d "
-                 "hsurf=%x format=%u\n", __FUNCTION__, surf->iUniq,
+                 "hsurf=%x format=%u color_trans->iUniq=%x\n", __FUNCTION__, surf->iUniq,
                  surf->fjBitmap & BMF_DONTCACHE, width, height,
                  surf->sizlBitmap.cx, surf->sizlBitmap.cy, surf->hsurf,
-                 surf->iBitmapFormat));
+                 surf->iBitmapFormat,
+                 color_trans ? color_trans->iUniq : 0));
 
     if (surf->iType != STYPE_BITMAP) {
         UINT32 alloc_size;
@@ -2381,30 +2387,9 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
     }
 
     ASSERT(pdev, surf->iBitmapFormat == BMF_32BPP && surf->iType == STYPE_BITMAP);
+    cache_image = GetCacheImage(pdev, surf, color_trans, TRUE, FALSE, &key);
 
-    //todo: use GetCacheImage
-
-    // NOTE: Same BMF_DONTCACHE issue as in QXLGetBitmap
-    if (!surf->iUniq || (surf->fjBitmap & BMF_DONTCACHE)) {
-        gdi_unique = 0;
-    } else {
-        gdi_unique = surf->iUniq;
-    }
-
-    if (!ImageKeyGet(pdev, surf->hsurf, gdi_unique, &key)) {
-        key = GetHash(surf->pvScan0, surf->sizlBitmap.cx, surf->sizlBitmap.cy, SPICE_BITMAP_FMT_RGBA,
-                      FALSE, surf->sizlBitmap.cx << 2, surf->lDelta, NULL);
-        ImageKeyPut(pdev, surf->hsurf, gdi_unique, key);
-        DEBUG_PRINT((pdev, 11, "%s: ImageKeyPut %u\n", __FUNCTION__, key));
-    } else {
-        DEBUG_PRINT((pdev, 11, "%s: ImageKeyGet %u\n", __FUNCTION__, key));
-    }
-
-    if (cache_image = ImageCacheGetByKey(pdev, key, TRUE, SPICE_BITMAP_FMT_RGBA,
-                                         surf->sizlBitmap.cx, surf->sizlBitmap.cy)) {
-        DEBUG_PRINT((pdev, 11, "%s: ImageCacheGetByKey %u hits %u\n", __FUNCTION__,
-                     key, cache_image->hits));
-        cache_image->hits++;
+    if (cache_image) {
         if (internal = cache_image->image) {
             DEBUG_PRINT((pdev, 11, "%s: cached image found %u\n", __FUNCTION__, key));
             *image_phys = PA(pdev, &internal->image, pdev->main_mem_slot);
@@ -2412,18 +2397,6 @@ BOOL QXLGetAlphaBitmap(PDev *pdev, QXLDrawable *drawable, QXLPHYSICAL *image_phy
             DrawableAddRes(pdev, drawable, image_res);
             return TRUE;
         }
-    } else if (CacheSizeTest(pdev, surf)) {
-        CacheImage *cache_image;
-        cache_image = AllocCacheImage(pdev);
-        ImageCacheRemove(pdev, cache_image);
-        cache_image->key = key;
-        cache_image->image = NULL;
-        cache_image->format = SPICE_BITMAP_FMT_RGBA;
-        cache_image->width = surf->sizlBitmap.cx;
-        cache_image->height = surf->sizlBitmap.cy;
-        ImageCacheAdd(pdev, cache_image);
-        RingAdd(pdev, &pdev->cache_image_lru, &cache_image->lru_link);
-        DEBUG_PRINT((pdev, 11, "%s: ImageCacheAdd %u\n", __FUNCTION__, key));
     }
 
     if (cache_image) {
