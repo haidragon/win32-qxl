@@ -3,7 +3,7 @@
 
 [Version]
 Signature = "$CHICAGO$"
-DriverVer = 08/15/2012,1.4.2.3
+DriverVer = 07/17/2013,1.4.2.4
 Provider = %RHAT%
 CatalogFile = qxl.cat
 Class = Display
