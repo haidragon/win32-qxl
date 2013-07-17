@@ -1046,16 +1046,18 @@ static UINT8 check_non_primary_surfaces_registry_key(QXLExtension *dev_ext)
 
     ret = VideoPortGetRegistryParameters(
               dev_ext,
-              L"DisableSurfaces",
+              L"SurfacesEnabled",
               FALSE,
               QXLRegistryCallback,
               &key_ret);
     if (ret == ERROR_INVALID_PARAMETER) {
-        dev_ext->create_non_primary_surfaces = 1;
-        DEBUG_PRINT((dev_ext, 0, "%s: CreateNonPrimarySurfaces key doesn't exist, default to 1\n",
+        dev_ext->create_non_primary_surfaces = 0;
+        DEBUG_PRINT((dev_ext, 0, "%s: SurfacesEnabled key doesn't exist, disabling surfaces\n",
                     __FUNCTION__));
     } else {
-        dev_ext->create_non_primary_surfaces = 0;
+        dev_ext->create_non_primary_surfaces = 1;
+        DEBUG_PRINT((dev_ext, 0, "%s: SurfacesEnabled key exists, enabling surfaces\n",
+                    __FUNCTION__));
     }
     return dev_ext->create_non_primary_surfaces;
 }
