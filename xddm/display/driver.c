@@ -1464,6 +1464,11 @@ VOID APIENTRY DrvDeleteDeviceBitmap(DHSURF dhsurf)
 
     DEBUG_PRINT((pdev, 3, "%s: %p: %d\n", __FUNCTION__, pdev, surface_id));
 
+    if (!pdev->enabled) {
+        DEBUG_PRINT((pdev, 3, "%s: device disabled, still destroying\n",
+                    __FUNCTION__));
+    }
+
     ASSERT(pdev, surface_id < pdev->n_surfaces);
 
     DeleteDeviceBitmap(surface->u.pdev, surface_id,
