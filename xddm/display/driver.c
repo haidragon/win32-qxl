@@ -1414,6 +1414,8 @@ HBITMAP APIENTRY DrvCreateDeviceBitmap(DHPDEV dhpdev, SIZEL size, ULONG format)
 
     pdev = (PDev *)dhpdev;
 
+    PUNT_IF_DISABLED(pdev);
+
     if (!pdev->create_non_primary_surfaces) {
         return FALSE;
     }

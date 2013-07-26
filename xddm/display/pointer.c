@@ -43,6 +43,8 @@ ULONG APIENTRY DrvSetPointerShape(SURFOBJ *surf, SURFOBJ *mask, SURFOBJ *color_p
         return SPS_ERROR;
     }
 
+    PUNT_IF_DISABLED(pdev);
+
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
 
     if (flags & SPS_CHANGE) {
@@ -126,6 +128,12 @@ VOID APIENTRY DrvMovePointer(SURFOBJ *surf, LONG pos_x, LONG pos_y, RECTL *area)
 
     if (pos_y < 0 && pos_x >= 0) {
         DEBUG_PRINT((pdev, 0, "%s: unexpected negative y pos\n", __FUNCTION__));
+        return;
+    }
+
+    if (!pdev->enabled) {
+        DEBUG_PRINT((pdev, 3, "%s: ignoring when device is disabled\n",
+                    __FUNCTION__));
         return;
     }
 

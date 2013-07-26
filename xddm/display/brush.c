@@ -235,9 +235,11 @@ BOOL APIENTRY DrvRealizeBrush(BRUSHOBJ *brush, SURFOBJ *target, SURFOBJ *pattern
     int size;
 
     if (!(pdev = (PDev *)target->dhpdev)) {
-        ASSERT(NULL, 0);
+        DEBUG_PRINT((NULL, 0, "%s: err no pdev\n", __FUNCTION__));
         return FALSE;
     }
+
+    PUNT_IF_DISABLED(pdev);
 
     DEBUG_PRINT((pdev, 3, "%s\n", __FUNCTION__));
 
