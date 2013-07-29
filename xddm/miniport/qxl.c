@@ -26,6 +26,10 @@
 #endif
 #include "minimal_snprintf.h"
 
+#define WIN_QXL_INT_MASK ((QXL_INTERRUPT_DISPLAY) | \
+                          (QXL_INTERRUPT_CURSOR) | \
+                          (QXL_INTERRUPT_IO_CMD))
+
 VP_STATUS FindAdapter(PVOID dev_extension,
                       PVOID reserved,
                       PWSTR arg_str,
@@ -828,7 +832,7 @@ void HWReset(QXLExtension *dev_ext);
  * when returning from sleep we don't want to do a redundant QXL_IO_RESET */
 static void ResetDeviceWithoutIO(QXLExtension *dev_ext)
 {
-    dev_ext->ram_header->int_mask = ~0;
+    dev_ext->ram_header->int_mask = WIN_QXL_INT_MASK;
     CreateMemSlots(dev_ext);
 }
 
@@ -1305,8 +1309,7 @@ VOID InterruptCallback(PVOID dev_extension, PVOID Context)
     if (pending & QXL_INTERRUPT_IO_CMD) {
         VideoPortSetEvent(dev_ext, dev_ext->io_cmd_event);
     }
-
-    dev_ext->ram_header->int_mask = ~0;
+    dev_ext->ram_header->int_mask = WIN_QXL_INT_MASK;
     VideoPortWritePortUchar((PUCHAR)dev_ext->io_base + QXL_IO_UPDATE_IRQ, 0);
 }
 
@@ -1322,7 +1325,7 @@ BOOLEAN Interrupt(PVOID dev_extension)
 
     if (!VideoPortQueueDpc(dev_extension, InterruptCallback, NULL)) {
         VideoPortLogError(dev_extension, NULL, E_UNEXPECTED, QXLERR_INT_DELIVERY);
-        dev_ext->ram_header->int_mask = ~0;
+        dev_ext->ram_header->int_mask = WIN_QXL_INT_MASK;
         VideoPortWritePortUchar((PUCHAR)dev_ext->io_base + QXL_IO_UPDATE_IRQ, 0);
     }
     return TRUE;
