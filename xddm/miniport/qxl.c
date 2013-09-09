@@ -1321,6 +1321,7 @@ BOOLEAN Interrupt(PVOID dev_extension)
         return FALSE;
     }
     dev_ext->ram_header->int_mask = 0;
+    VideoPortWritePortUchar((PUCHAR)dev_ext->io_base + QXL_IO_UPDATE_IRQ, 0);
 
     if (!VideoPortQueueDpc(dev_extension, InterruptCallback, NULL)) {
         VideoPortLogError(dev_extension, NULL, E_UNEXPECTED, QXLERR_INT_DELIVERY);
